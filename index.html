@@ -9,7 +9,36 @@
 <body>
   <h1>מערכת התראות AI</h1>
   <button id="subscribeBtn">הפעל התראות</button>
+<!-- אזור תצוגת הודעות שנשלחו/התקבלו -->
+<section id="messages-container" style="margin-top: 20px; text-align: left; max-width: 500px; margin-x: auto;">
+  <h3>📥 הודעות אחרונות מהסוכן:</h3>
+  <div id="messages-list" style="border: 1px solid #ccc; padding: 10px; borderRadius: 8px; min-height: 80px; background: #f9f9f9;">
+    <p id="no-messages" style="color: #888; margin: 0;">עוד לא התקבלו הודעות...</p>
+  </div>
+</section>
 
+<script>
+  // האזנה להודעות שמגיעות מה-Service Worker
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
+      const { title, body, timestamp } = event.data.payload;
+      
+      const list = document.getElementById('messages-list');
+      const noMsg = document.getElementById('no-messages');
+      if (noMsg) noMsg.remove();
+
+      const item = document.createElement('div');
+      item.style.cssText = "border-bottom: 1px solid #ddd; padding: 8px 0; margin-bottom: 5px;";
+      item.innerHTML = `
+        <strong style="color: #2b6cb0;">${title}</strong>
+        <p style="margin: 4px 0 2px 0;">${body}</p>
+        <small style="color: #718096; font-size: 0.8em;">${new Date(timestamp).toLocaleTimeString('he-IL')}</small>
+      `;
+      
+      list.prepend(item); // הוספת ההודעה החדשה בראש הרשימה
+    }
+  });
+</script>
   <script>
     const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
