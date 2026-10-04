@@ -14,78 +14,66 @@
     const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
 
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      // רישום בנתיב יחסי
-      navigator.serviceWorker.register('./sw.js')
-        .then(() => console.log('Service Worker נרשם'))
-        .catch(err => console.error('שגיאה ברישום:', err));
+    // פונקציית עזר להמרת מפתח ה-VAPID
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
     }
 
+    // רישום ה-Service Worker
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.register('./sw.js')
+        .then(() => console.log('Service Worker נרשם בהצלחה'))
+        .catch(err => console.error('שגיאה ברישום Service Worker:', err));
+    }
+
+    // טיפול בלחיצה על כפתור הפעלת ההתראות
     document.getElementById('subscribeBtn').addEventListener('click', async () => {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        alert('יש לאשר התראות בדפדפן');
-        return;
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          alert('יש לאשר התראות בדפדפן');
+          return;
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
+        });
+
+        console.log('Subscription נוצר בהצלחה:', subscription);
+
+        // שליחת ה-Subscription לשרת ב-Render
+        const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
+          method: 'POST',
+          body: JSON.stringify(subscription),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.ok) {
+          console.log('Subscription נשמר בשרת בהצלחה!');
+          alert('ההתראות הופעלו ונשמרו בשרת בהצלחה!');
+        } else {
+          console.error('שגיאה בשמירה בשרת:', res.statusText);
+          alert('אישור ההתראות בוצע, אך שמיעת הנתונים בשרת נכשלה.');
+        }
+
+      } catch (err) {
+        console.error('שגיאה במהלך ההרשמה:', err);
+        alert('אירעה שגיאה בהפעלת ההתראות. בדוק את ה-Console.');
       }
-
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
-      });
-
-      // שליחת הרישום לשרת ב-Render
-      await fetch(`${BACKEND_URL}/api/subscribe`, {
-        method: 'POST',
-        body: JSON.stringify(subscription),
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      alert('ההתראות הופעלו בהצלחה!');
     });
-
-    // פונקציית עזר להמרת מפתח ה-VAPID לפורמט שהדפדפן דורש
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
-// קוד ההרשמה בלחיצה על הכפתור
-const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
-
-document.getElementById('notify-btn').addEventListener('click', async () => {
-  const reg = await navigator.serviceWorker.ready;
-  
-  try {
-    const subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
-    });
-
-    console.log('Subscription created:', subscription);
-
-    // שליחת המנוי לשרת ב-Render
-    await fetch('https://popup-server-cq3c.onrender.com/api/subscribe', {
-      method: 'POST',
-      body: JSON.stringify(subscription),
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    console.log('Subscription sent to server successfully!');
-  } catch (err) {
-    console.error('Subscription failed:', err);
-  }
-});
   </script>
 </body>
 </html>
