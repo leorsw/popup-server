@@ -86,11 +86,19 @@ app.post('/api/subscribe', async (req, res) => {
 
 // 5. שליחת התראה לכל המנויים (מאובטח ב-API Key)
 app.post('/api/ai-notify', async (req, res) => {
-  // בדיקת API Key מתוך x-api-key או let-it-bleed-1969
+  // express הופך headers ל-lowercase אוטומטית
   const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
   const expectedApiKey = process.env.API_SECRET_KEY;
 
-  if (expectedApiKey && apiKey !== expectedApiKey) {
+  console.log(`[AUTH CHECK] Received Key: "${apiKey}" | Expected Key Exists: ${!!expectedApiKey}`);
+
+  if (!expectedApiKey) {
+    console.error('❌ API_SECRET_KEY is missing in Render environment variables!');
+    return res.status(500).json({ error: 'Server misconfiguration: API_SECRET_KEY is not set' });
+  }
+
+  if (apiKey !== expectedApiKey) {
+    console.warn(`❌ Unauthorized access attempt. Received key does not match API_SECRET_KEY.`);
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' });
   }
 
