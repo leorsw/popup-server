@@ -17,8 +17,8 @@ app.use(cors({
 app.use(bodyParser.json());
 
 // 1. חיבור ל-Supabase מתוך משתני סביבה
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.https://qtyqugdcacjdllgtgzsz.supabase.co;
+const supabaseKey = process.env.sb_publishable_uC2Butg46rOIV635lmFT1Q_f2DqEds-
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 2. הגדרת מפתחות VAPID
