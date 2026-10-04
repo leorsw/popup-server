@@ -10,7 +10,7 @@ const app = express();
 // 2. הפעלת CORS - חייב להיות בתחילת הקובץ לפני הגדרת ה-Routes
 app.use(cors({
   origin: [
-    'https://YOUR_USERNAME.github.io', // כתובת ה-PWA שלך ב-GitHub Pages
+    'https://leorsw.github.io/popup-server/', // כתובת ה-PWA שלך ב-GitHub Pages
     'http://localhost:3000'              // בדיקה מקומית (אופציונלי)
   ]
 }));
