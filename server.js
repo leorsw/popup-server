@@ -6,17 +6,28 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// הגדרת CORS
+// 1. הגדרת CORS מדויקת - ללא סיומת הנתיב (Path)
 app.use(cors({
   origin: [
-    'https://leorsw.github.io/popup-server/', // החלף ב-Username שלך ב-GitHub
-    'http://localhost:3000'
-  ]
+    'https://leorsw.github.io', // ה-Origin התקני של GitHub Pages
+    'http://localhost:3000',
+    'http://127.0.0.1:5500'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// טיפול מפורש בבקשות Preflight
+app.options('*', cors());
 
 app.use(bodyParser.json());
 
-// 1. חיבור ל-Supabase מתוך משתני סביבה
+// 2. אתחול לקוח Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// 3. הגדרת מפתחות VAPID
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 
@@ -37,7 +48,7 @@ if (publicVapidKey && privateVapidKey) {
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
 
-// 3. שמירת Subscription חדש במסד הנתונים
+// 4. שמירת Subscription חדש במסד הנתונים
 app.post('/api/subscribe', async (req, res) => {
   const subscription = req.body;
 
@@ -65,7 +76,7 @@ app.post('/api/subscribe', async (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 4. שליחת התראה לכל המנויים הרשומים במסד הנתונים
+// 5. שליחת התראה לכל המנויים הרשומים במסד הנתונים
 app.post('/api/ai-notify', async (req, res) => {
   const { title, message, url } = req.body;
 
