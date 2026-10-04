@@ -1,73 +1,75 @@
-// אירוע התקנה - מדלג על המתנה ומשתלט מיד
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-});
+// sw.js
 
-// אירוע אקטיבציה - תופס שליטה על כל הלשוניות הפתוחות
-self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
+// פונקציית עזר לשמירת הודעה ב-IndexedDB
+function saveMessageToIndexedDB(data) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('PushMessagesDB', 1);
 
-// קבלת התראת Push מהשרת
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('messages')) {
+        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const tx = db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      store.add({
+        title: data.title || 'התראה חדשה',
+        body: data.body || '',
+        timestamp: data.timestamp || Date.now()
+      });
+      tx.oncomplete = () => resolve();
+    };
+
+    request.onerror = (err) => reject(err);
+  });
+}
+
 self.addEventListener('push', (event) => {
-  let data = { title: 'התראה חדשה', message: '' };
+  let data = { title: 'התראה חדשה', body: '' };
 
   if (event.data) {
     try {
-      data = event.data.json();
+      const json = event.data.json();
+      data = json.payload || json;
     } catch (e) {
-      data = { title: 'התראה חדשה', message: event.data.text() };
+      data.body = event.data.text();
     }
   }
 
-  const title = data.title || 'התראה חדשה';
-  const bodyText = data.message || data.body || '';
-
-  const options = {
-    body: bodyText,
-    icon: './icon.png',
-    badge: './badge.png',
-    data: { url: data.url || './' }
+  const payloadData = {
+    title: data.title || 'התראה חדשה',
+    body: data.body || '',
+    timestamp: data.timestamp || Date.now()
   };
 
-  // 1. הצגת התראת פופ-אפ במערכת ההפעלה/בדפדפן
-  const notificationPromise = self.registration.showNotification(title, options);
-
-  // 2. שידור תוכן ההודעה ל-index.html בזמן אמת (כולל חלונות שעדיין בלתי נשלטים)
-  const messageClientsPromise = self.clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  }).then((clients) => {
-    clients.forEach((client) => {
-      client.postMessage({
-        type: 'PUSH_NOTIFICATION_RECEIVED',
-        payload: {
-          title: title,
-          body: bodyText,
-          timestamp: Date.now()
-        }
-      });
-    });
-  });
-
-  event.waitUntil(Promise.all([notificationPromise, messageClientsPromise]));
-});
-
-// טיפול בלחיצה על ההתראה (פתיחה/מיקוד בלשונית)
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const urlToOpen = event.notification.data?.url || './';
-
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let client of windowClients) {
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
-    })
+    Promise.all([
+      // 1. שמירה במסד הנתונים שזמין גם באייפון
+      saveMessageToIndexedDB(payloadData),
+      
+      // 2. הצגת ההתראה במסך האייפון
+      self.registration.showNotification(payloadData.title, {
+        body: payloadData.body,
+        icon: '/icon.png',
+        data: payloadData
+      }),
+
+      // 3. ניסיון שליחה בזמן אמת אם האפליקציה פתוחה
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'PUSH_NOTIFICATION_RECEIVED',
+            payload: payloadData
+          });
+        });
+      })
+    ])
   );
 });
+
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
