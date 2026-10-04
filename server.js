@@ -17,19 +17,23 @@ app.use(cors({
 app.use(bodyParser.json());
 
 // 1. חיבור ל-Supabase מתוך משתני סביבה
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY; // או SUPABASE_KEY, לפי השם שהגדרת ב-Render
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-// 2. הגדרת מפתחות VAPID
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 
-webpush.setVapidDetails(
-  'mailto:your-email@example.com',
-  publicVapidKey,
-  privateVapidKey
-);
+if (publicVapidKey && privateVapidKey) {
+  try {
+    webpush.setVapidDetails(
+      'mailto:your-email@example.com',
+      publicVapidKey,
+      privateVapidKey
+    );
+    console.log('VAPID configured successfully');
+  } catch (error) {
+    console.error('Failed to set VAPID details:', error.message);
+  }
+} else {
+  console.warn('VAPID keys are missing or not set properly.');
+}
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
 
