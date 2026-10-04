@@ -17,10 +17,10 @@ app.use(cors({
 app.use(bodyParser.json());
 
 // 1. חיבור ל-Supabase מתוך משתני סביבה
-const supabaseUrl = process.env.https://qtyqugdcacjdllgtgzsz.supabase.co;
-const supabaseKey = process.env.sb_publishable_uC2Butg46rOIV635lmFT1Q_f2DqEds-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY; // או SUPABASE_KEY, לפי השם שהגדרת ב-Render
 
+const supabase = createClient(supabaseUrl, supabaseKey);
 // 2. הגדרת מפתחות VAPID
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
