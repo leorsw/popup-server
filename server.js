@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// 1. הגדרת CORS מדויקת - ללא סיומת הנתיב (Path)
+// 1. הגדרת CORS מדויקת
 app.use(cors({
   origin: [
     'https://leorsw.github.io', // ה-Origin התקני של GitHub Pages
@@ -14,7 +14,7 @@ app.use(cors({
     'http://127.0.0.1:5500'
   ],
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'let-it-bleed-1969']
 }));
 
 // טיפול מפורש בבקשות Preflight
@@ -23,7 +23,6 @@ app.options('*', cors());
 app.use(bodyParser.json());
 
 // 2. אתחול לקוח Supabase
-// אתחול לקוח Supabase
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
 
@@ -31,7 +30,6 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn('⚠️ WARNING: SUPABASE_URL or SUPABASE_KEY is missing in Environment Variables!');
 }
 
-// מעבירים ערך fallback זמני כדי לא להפיל את השרת בריצה
 const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseKey || 'placeholder-key'
@@ -86,11 +84,10 @@ app.post('/api/subscribe', async (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 5. שליחת התראה לכל המנויים הרשומים במסד הנתונים
-// שליחת התראה לכל המנויים (מאובטח ב-API Key)
+// 5. שליחת התראה לכל המנויים (מאובטח ב-API Key)
 app.post('/api/ai-notify', async (req, res) => {
-  // בדיקת API Key
-  const apiKey = req.headers['let-it-bleed-1969'];
+  // בדיקת API Key מתוך x-api-key או let-it-bleed-1969
+  const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
   const expectedApiKey = process.env.API_SECRET_KEY;
 
   if (expectedApiKey && apiKey !== expectedApiKey) {
@@ -138,9 +135,6 @@ app.post('/api/ai-notify', async (req, res) => {
     }
   });
 
-  await Promise.all(notifications);
-  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
-});
   await Promise.all(notifications);
   res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
 });
