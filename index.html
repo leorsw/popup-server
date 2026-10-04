@@ -12,7 +12,6 @@
     <h1>מערכת התראות AI</h1>
     <button id="subscribeBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #3182ce; color: white; border: none; border-radius: 6px;">הפעל התראות</button>
 
-    <!-- אזור תצוגת הודעות שנשלחו/התקבלו -->
     <section id="messages-container" style="margin-top: 30px; text-align: right;">
       <h3 style="margin-bottom: 10px; color: #2d3748;">📥 הודעות אחרונות מהסוכן:</h3>
       <div id="messages-list" style="border: 1px solid #cbd5e0; padding: 15px; border-radius: 8px; min-height: 100px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
@@ -22,71 +21,61 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'pwa_push_messages';
+    // טעינת הודעות מ-IndexedDB לתצוגה
+    function loadMessagesFromIndexedDB() {
+      const request = indexedDB.open('PushMessagesDB', 1);
 
-    // פונקציה להוספת הודעה ל-DOM ול-LocalStorage
-    function renderAndSaveMessage(title, body, timestamp) {
-      const list = document.getElementById('messages-list');
-      const noMsg = document.getElementById('no-messages');
-      if (noMsg) noMsg.remove();
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('messages')) {
+          db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+        }
+      };
 
-      const item = document.createElement('div');
-      item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
-      item.innerHTML = `
-        <strong style="color: #2b6cb0; font-size: 1.1em; display: block;">${title}</strong>
-        <p style="margin: 4px 0; color: #2d3748; font-size: 1em;">${body}</p>
-        <small style="color: #a0aec0; font-size: 0.8em;">${new Date(timestamp).toLocaleTimeString('he-IL')}</small>
-      `;
-      
-      list.prepend(item);
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const tx = db.transaction('messages', 'readonly');
+        const store = tx.objectStore('messages');
+        const getAllRequest = store.getAll();
 
-      // שמירה ב-LocalStorage כדי לשמור היסטוריה בפתיחה מחדש באייפון
-      const savedMessages = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      const exists = savedMessages.some(m => m.timestamp === timestamp && m.title === title);
-      if (!exists) {
-        savedMessages.unshift({ title, body, timestamp });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(savedMessages.slice(0, 20))); // שומר 20 אחרונות
-      }
+        getAllRequest.onsuccess = () => {
+          const messages = getAllRequest.result || [];
+          if (messages.length > 0) {
+            const noMsg = document.getElementById('no-messages');
+            if (noMsg) noMsg.remove();
+
+            const list = document.getElementById('messages-list');
+            list.innerHTML = '';
+
+            // מיון מהחדש לישן
+            messages.reverse().forEach(msg => {
+              const item = document.createElement('div');
+              item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
+              item.innerHTML = `
+                <strong style="color: #2b6cb0; font-size: 1.1em; display: block;">${msg.title}</strong>
+                <p style="margin: 4px 0; color: #2d3748; font-size: 1em;">${msg.body}</p>
+                <small style="color: #a0aec0; font-size: 0.8em;">${new Date(msg.timestamp).toLocaleTimeString('he-IL')}</small>
+              `;
+              list.appendChild(item);
+            });
+          }
+        };
+      };
     }
 
-    // טעינת הודעות שמורות מ-LocalStorage ברגע טעינת העמוד
-    function loadSavedMessages() {
-      const savedMessages = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      if (savedMessages.length > 0) {
-        const noMsg = document.getElementById('no-messages');
-        if (noMsg) noMsg.remove();
-        
-        const list = document.getElementById('messages-list');
-        list.innerHTML = ''; // ניקוי
-        
-        savedMessages.forEach(msg => {
-          const item = document.createElement('div');
-          item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
-          item.innerHTML = `
-            <strong style="color: #2b6cb0; font-size: 1.1em; display: block;">${msg.title}</strong>
-            <p style="margin: 4px 0; color: #2d3748; font-size: 1em;">${msg.body}</p>
-            <small style="color: #a0aec0; font-size: 0.8em;">${new Date(msg.timestamp).toLocaleTimeString('he-IL')}</small>
-          `;
-          list.appendChild(item);
-        });
+    // טעינה ראשונית + רענון כשהאפליקציה חוזרת לקדמת המסך באייפון
+    loadMessagesFromIndexedDB();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        loadMessagesFromIndexedDB();
       }
-    }
+    });
 
-    // טעינה ראשונית של היסטוריה
-    loadSavedMessages();
-
-    // 1. האזנה גלובלית להודעות בזמן אמת מה-Service Worker
+    // האזנה בזמן אמת אם ה-PWA פתוח בגלוי
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
-        console.log('התקבלה הודעה בזמן אמת ב-index.html:', event.data);
-
         if (event.data && event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
-          const payload = event.data.payload || {};
-          const title = payload.title || 'התראה חדשה';
-          const body = payload.body || payload.message || '';
-          const timestamp = payload.timestamp || Date.now();
-
-          renderAndSaveMessage(title, body, timestamp);
+          loadMessagesFromIndexedDB();
         }
       });
     }
@@ -96,31 +85,21 @@
 
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding)
-        .replace(/\-/g, '+')
-        .replace(/_/g, '/');
-
+      const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
       const rawData = window.atob(base64);
       const outputArray = new Uint8Array(rawData.length);
-
       for (let i = 0; i < rawData.length; ++i) {
         outputArray[i] = rawData.charCodeAt(i);
       }
       return outputArray;
     }
 
-    // 2. רישום ה-Service Worker
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.register('./sw.js')
-        .then((reg) => console.log('Service Worker נרשם בהצלחה:', reg))
-        .catch(err => console.error('שגיאה ברישום Service Worker:', err));
-
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('ה-Service Worker תפס שליטה פעילה על העמוד!');
-      });
+        .then((reg) => console.log('SW נרשם בהצלחה'))
+        .catch(err => console.error('שגיאה ברישום SW:', err));
     }
 
-    // 3. הרשמה להתראות בלחיצה
     document.getElementById('subscribeBtn').addEventListener('click', async () => {
       try {
         const permission = await Notification.requestPermission();
@@ -135,8 +114,6 @@
           applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
         });
 
-        console.log('Subscription נוצר בהצלחה:', subscription);
-
         const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
           method: 'POST',
           body: JSON.stringify(subscription),
@@ -144,16 +121,10 @@
         });
 
         if (res.ok) {
-          console.log('Subscription נשמר בשרת בהצלחה!');
           alert('ההתראות הופעלו ונשמרו בשרת בהצלחה!');
-        } else {
-          console.error('שגיאה בשמירה בשרת:', res.statusText);
-          alert('אישור ההתראות בוצע, אך שמירת הנתונים בשרת נכשלה.');
         }
-
       } catch (err) {
-        console.error('שגיאה במהלך ההרשמה:', err);
-        alert('אירעה שגיאה בהפעלת ההתראות. בדוק את ה-Console.');
+        console.error('שגיאה:', err);
       }
     });
   </script>
