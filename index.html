@@ -21,62 +21,57 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'pwa_push_messages';
+    // פונקציה לרנדור הודעות מ-IndexedDB
+    function renderMessagesFromDB() {
+      const request = indexedDB.open('PushMessagesDB', 1);
 
-    // שמירה והצגה של הודעה
-    function saveAndRenderMessage(title, body, timestamp) {
-      if (!title && !body) return;
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('messages')) {
+          db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+        }
+      };
 
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      const exists = saved.some(m => m.timestamp === timestamp && m.title === title);
-      
-      if (!exists) {
-        saved.unshift({ title, body, timestamp });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved.slice(0, 20)));
-      }
-      
-      renderAllMessages();
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const tx = db.transaction('messages', 'readonly');
+        const store = tx.objectStore('messages');
+        const getAllRequest = store.getAll();
+
+        getAllRequest.onsuccess = () => {
+          const messages = getAllRequest.result || [];
+          if (messages.length > 0) {
+            const list = document.getElementById('messages-list');
+            list.innerHTML = ''; // ניקוי הרשימה לפני הצגה מחדש
+
+            // מציג מההודעה החדשה ביותר לישנה ביותר
+            messages.reverse().forEach(msg => {
+              const item = document.createElement('div');
+              item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
+              item.innerHTML = `
+                <strong style="color: #2b6cb0; font-size: 1.1em; display: block;">${msg.title}</strong>
+                <p style="margin: 4px 0; color: #2d3748; font-size: 1em;">${msg.body}</p>
+                <small style="color: #a0aec0; font-size: 0.8em;">${new Date(msg.timestamp).toLocaleTimeString('he-IL')}</small>
+              `;
+              list.appendChild(item);
+            });
+          }
+        };
+      };
     }
 
-    // רנדור רשימת ההודעות מה-LocalStorage
-    function renderAllMessages() {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      const list = document.getElementById('messages-list');
-      
-      if (saved.length > 0) {
-        list.innerHTML = '';
-        saved.forEach(msg => {
-          const item = document.createElement('div');
-          item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
-          item.innerHTML = `
-            <strong style="color: #2b6cb0; font-size: 1.1em; display: block;">${msg.title}</strong>
-            <p style="margin: 4px 0; color: #2d3748; font-size: 1em;">${msg.body}</p>
-            <small style="color: #a0aec0; font-size: 0.8em;">${new Date(msg.timestamp).toLocaleTimeString('he-IL')}</small>
-          `;
-          list.appendChild(item);
-        });
+    // 1. טעינה ראשונית
+    renderMessagesFromDB();
+
+    // 2. רענון אקטיבי בעת חזרה לאפליקציה / מעבר לפרונט
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        renderMessagesFromDB();
       }
-    }
+    });
 
-    // 📥 בדיקה אם האתר נפתח בעקבות לחיצה על התראה (חילוץ מ-URL Parameters)
-    function checkUrlForNotificationData() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const title = urlParams.get('title');
-      const body = urlParams.get('body');
-      const ts = urlParams.get('ts');
-
-      if (title || body) {
-        const timestamp = ts ? parseInt(ts, 10) : Date.now();
-        saveAndRenderMessage(decodeURIComponent(title || ''), decodeURIComponent(body || ''), timestamp);
-        
-        // ניקוי הפרמטרים מכתובת ה-URL ללא רענון העמוד
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    }
-
-    // טעינה ראשונית של הודעות קודמות + בדיקת פרמטרים ב-URL
-    renderAllMessages();
-    checkUrlForNotificationData();
+    // 3. בודק שינויים ב-IndexedDB באופן מחזורי (פותר לחלוטין את הבעיה ב-iOS)
+    setInterval(renderMessagesFromDB, 2000);
 
     const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
