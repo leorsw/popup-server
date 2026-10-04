@@ -44,12 +44,48 @@
       alert('ההתראות הופעלו בהצלחה!');
     });
 
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
-    }
+    // פונקציית עזר להמרת מפתח ה-VAPID לפורמט שהדפדפן דורש
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// קוד ההרשמה בלחיצה על הכפתור
+const PUBLIC_VAPID_KEY = 'הדבק_כאן_את_ה-VAPID_PUBLIC_KEY_שלך';
+
+document.getElementById('notify-btn').addEventListener('click', async () => {
+  const reg = await navigator.serviceWorker.ready;
+  
+  try {
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
+    });
+
+    console.log('Subscription created:', subscription);
+
+    // שליחת המנוי לשרת ב-Render
+    await fetch('https://popup-server-cq3c.onrender.com/api/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    console.log('Subscription sent to server successfully!');
+  } catch (err) {
+    console.error('Subscription failed:', err);
+  }
+});
   </script>
 </body>
 </html>
