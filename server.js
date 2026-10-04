@@ -87,7 +87,16 @@ app.post('/api/subscribe', async (req, res) => {
 });
 
 // 5. שליחת התראה לכל המנויים הרשומים במסד הנתונים
+// שליחת התראה לכל המנויים (מאובטח ב-API Key)
 app.post('/api/ai-notify', async (req, res) => {
+  // בדיקת API Key
+  const apiKey = req.headers['let-it-bleed-1969'];
+  const expectedApiKey = process.env.API_SECRET_KEY;
+
+  if (expectedApiKey && apiKey !== expectedApiKey) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' });
+  }
+
   const { title, message, url } = req.body;
 
   // שליפת כל המנויים מ-Supabase
@@ -110,7 +119,6 @@ app.post('/api/ai-notify', async (req, res) => {
     url: url || './'
   });
 
-  // שליחת ההתראה לכל המכשירים
   const notifications = dbSubscriptions.map(async (row) => {
     const subFormat = {
       endpoint: row.endpoint,
@@ -121,17 +129,18 @@ app.post('/api/ai-notify', async (req, res) => {
       await webpush.sendNotification(subFormat, payload);
     } catch (err) {
       console.error('Push error for endpoint:', row.endpoint, err.statusCode);
-      // אם המנוי פג תוקף או הוסר מהמכשיר (410/404), מוחקים אותו מ-Supabase
       if (err.statusCode === 410 || err.statusCode === 404) {
         await supabase
           .from('subscriptions')
           .delete()
           .eq('endpoint', row.endpoint);
-        console.log('Removed expired subscription from DB:', row.endpoint);
       }
     }
   });
 
+  await Promise.all(notifications);
+  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
+});
   await Promise.all(notifications);
   res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
 });
