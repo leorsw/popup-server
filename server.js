@@ -23,9 +23,19 @@ app.options('*', cors());
 app.use(bodyParser.json());
 
 // 2. אתחול לקוח Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// אתחול לקוח Supabase
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || '';
+
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('⚠️ WARNING: SUPABASE_URL or SUPABASE_KEY is missing in Environment Variables!');
+}
+
+// מעבירים ערך fallback זמני כדי לא להפיל את השרת בריצה
+const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseKey || 'placeholder-key'
+);
 
 // 3. הגדרת מפתחות VAPID
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
