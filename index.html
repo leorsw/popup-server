@@ -19,28 +19,30 @@
   </section>
 
   <script>
-    // האזנה להודעות שמגיעות מה-Service Worker
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      console.log('התקבלה הודעה ב-index.html:', event.data);
+    // האזנה להודעות שמגיעות מה-Service Worker בזמן אמת
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        console.log('התקבלה הודעה ב-index.html:', event.data);
 
-      if (event.data && event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
-        const { title, body, timestamp } = event.data.payload;
-        
-        const list = document.getElementById('messages-list');
-        const noMsg = document.getElementById('no-messages');
-        if (noMsg) noMsg.remove();
+        if (event.data && event.data.type === 'PUSH_NOTIFICATION_RECEIVED') {
+          const { title, body, timestamp } = event.data.payload;
+          
+          const list = document.getElementById('messages-list');
+          const noMsg = document.getElementById('no-messages');
+          if (noMsg) noMsg.remove();
 
-        const item = document.createElement('div');
-        item.style.cssText = "border-bottom: 1px solid #ddd; padding: 8px 0; margin-bottom: 5px;";
-        item.innerHTML = `
-          <strong style="color: #2b6cb0;">${title}</strong>
-          <p style="margin: 4px 0 2px 0;">${body}</p>
-          <small style="color: #718096; font-size: 0.8em;">${new Date(timestamp).toLocaleTimeString('he-IL')}</small>
-        `;
-        
-        list.prepend(item); // הוספת ההודעה החדשה בראש הרשימה
-      }
-    });
+          const item = document.createElement('div');
+          item.style.cssText = "border-bottom: 1px solid #ddd; padding: 8px 0; margin-bottom: 5px;";
+          item.innerHTML = `
+            <strong style="color: #2b6cb0;">${title}</strong>
+            <p style="margin: 4px 0 2px 0;">${body}</p>
+            <small style="color: #718096; font-size: 0.8em;">${new Date(timestamp).toLocaleTimeString('he-IL')}</small>
+          `;
+          
+          list.prepend(item); // הוספת ההודעה בראש הרשימה
+        }
+      });
+    }
   </script>
 
   <script>
@@ -63,11 +65,15 @@
       return outputArray;
     }
 
-    // רישום ה-Service Worker
+    // רישום ה-Service Worker והאזנה לשינוי שליטה
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.register('./sw.js')
         .then((reg) => console.log('Service Worker נרשם בהצלחה:', reg))
         .catch(err => console.error('שגיאה ברישום Service Worker:', err));
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('ה-Service Worker קיבל שליטה על העמוד');
+      });
     }
 
     // טיפול בלחיצה על כפתור הפעלת ההתראות
