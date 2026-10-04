@@ -9,7 +9,7 @@ const app = express();
 // הגדרת CORS
 app.use(cors({
   origin: [
-    'https://leorsw.github.io', // החלף ב-Username שלך ב-GitHub
+    'https://leorsw.github.io/popup-server/', // החלף ב-Username שלך ב-GitHub
     'http://localhost:3000'
   ]
 }));
