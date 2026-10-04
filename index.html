@@ -19,7 +19,7 @@
   </section>
 
   <script>
-    // האזנה להודעות שמגיעות מה-Service Worker בזמן אמת
+    // 1. האזנה גלובלית להודעות שנשלחות מה-Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
         console.log('התקבלה הודעה ב-index.html:', event.data);
@@ -39,13 +39,11 @@
             <small style="color: #718096; font-size: 0.8em;">${new Date(timestamp).toLocaleTimeString('he-IL')}</small>
           `;
           
-          list.prepend(item); // הוספת ההודעה בראש הרשימה
+          list.prepend(item); // הוספת ההודעה החדשה בראש הרשימה
         }
       });
     }
-  </script>
 
-  <script>
     const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
 
@@ -65,18 +63,20 @@
       return outputArray;
     }
 
-    // רישום ה-Service Worker והאזנה לשינוי שליטה
+    // 2. רישום ה-Service Worker והאזנה לתפיסת שליטה
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.register('./sw.js')
-        .then((reg) => console.log('Service Worker נרשם בהצלחה:', reg))
+        .then((reg) => {
+          console.log('Service Worker נרשם בהצלחה:', reg);
+        })
         .catch(err => console.error('שגיאה ברישום Service Worker:', err));
 
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('ה-Service Worker קיבל שליטה על העמוד');
+        console.log('ה-Service Worker תפס שליטה פעילה על העמוד!');
       });
     }
 
-    // טיפול בלחיצה על כפתור הפעלת ההתראות
+    // 3. טיפול בלחיצה על כפתור הפעלת ההתראות
     document.getElementById('subscribeBtn').addEventListener('click', async () => {
       try {
         const permission = await Notification.requestPermission();
