@@ -1,3 +1,14 @@
+// אירוע התקנה - מאפשר ל-Service Worker להתחיל לפעול מיד
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+// אירוע אקטיבציה - תופס שליטה על הלשוניות הפתוחות מיידית
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+// 1. קבלת התראת Push מהשרת
 self.addEventListener('push', (event) => {
   let data = { title: 'התראה חדשה', message: '' };
 
@@ -5,22 +16,22 @@ self.addEventListener('push', (event) => {
     try {
       data = event.data.json();
     } catch (e) {
-      data.message = event.data.text();
+      data = { title: 'התראה חדשה', message: event.data.text() };
     }
   }
 
   const title = data.title || 'התראה חדשה';
   const options = {
     body: data.message || data.body || '',
-    icon: '/icon.png', // תמונה במידה וקיימת
-    badge: '/badge.png',
+    icon: './icon.png',
+    badge: './badge.png',
     data: { url: data.url || './' }
   };
 
-  // 1. הופעת ההתראה במסך
+  // הצגת ההתראה במסך הדפדפן / מערכת ההפעלה
   const notificationPromise = self.registration.showNotification(title, options);
 
-  // 2. העברת תוכן ההודעה ל-index.html אם העמוד פתוח בדפדפן
+  // העברת תוכן ההודעה בזמן אמת ל-index.html (אם העמוד פתוח בדפדפן)
   const messageClientsPromise = self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
     clients.forEach((client) => {
       client.postMessage({
@@ -36,12 +47,24 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(Promise.all([notificationPromise, messageClientsPromise]));
 });
-    const options = {
-        body: notificationData.body,
-        icon: 'icon.png'
-    };
 
-    event.waitUntil(
-        self.registration.showNotification(notificationData.title, options)
-    );
+// 2. טיפול בלחיצה על ההתראה (פתיחת הדף/מיקוד בלשונית)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || './';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // אם הדף כבר פתוח - מביא אותו לקדמת המסך
+      for (let client of windowClients) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // אם הדף לא פתוח - פותח לשונית חדשה
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });
