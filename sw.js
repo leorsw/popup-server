@@ -1,5 +1,34 @@
 // sw.js
 
+// פונקציה אמינה לכתיבה ל-IndexedDB
+function saveToDB(data) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('PushMessagesDB', 1);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('messages')) {
+        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const tx = db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      store.add({
+        title: data.title || 'התראה חדשה',
+        body: data.body || '',
+        timestamp: data.timestamp || Date.now()
+      });
+      tx.oncomplete = () => resolve();
+    };
+
+    request.onerror = (err) => reject(err);
+  });
+}
+
+// קבלת הפוש ושמירתו מיד במסד הנתונים
 self.addEventListener('push', (event) => {
   let payload = { title: 'התראה חדשה', body: '' };
 
@@ -12,47 +41,42 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const title = payload.title || 'התראה חדשה';
-  const options = {
-    body: payload.body || '',
-    icon: '/icon.png',
-    data: {
-      title: title,
-      body: payload.body || '',
-      timestamp: payload.timestamp || Date.now()
-    }
+  const payloadData = {
+    title: payload.title || 'התראה חדשה',
+    body: payload.body || payload.message || '',
+    timestamp: payload.timestamp || Date.now()
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    Promise.all([
+      saveToDB(payloadData),
+      self.registration.showNotification(payloadData.title, {
+        body: payloadData.body,
+        icon: '/icon.png',
+        data: payloadData
+      })
+    ])
   );
 });
 
-// 📌 חלק קריטי: לחיצה על ההתראה מעבירה את הנתונים ב-URL ל-PWA
+// בלחיצה על ההתראה - שמירה מחדש ליתר ביטחון ופתיחת/מיקוד האפליקציה
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close(); // סגירת ההתראה במסך
+  event.notification.close();
 
-  const notificationData = event.notification.data || {};
-  const title = encodeURIComponent(notificationData.title || '');
-  const body = encodeURIComponent(notificationData.body || '');
-  const timestamp = notificationData.timestamp || Date.now();
-
-  // יצירת כתובת URL שכוללת את כל פרטי ההודעה
-  const targetUrl = new URL(`/?title=${title}&body=${body}&ts=${timestamp}`, self.location.origin).href;
+  const data = event.notification.data || {};
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // אם האפליקציה כבר פתוחה ברקע - ניקח אותה ונפנה אותה ל-URL עם הפרמטרים
-      for (const client of clientList) {
-        if ('navigate' in client && 'focus' in client) {
-          client.navigate(targetUrl);
-          return client.focus();
+    saveToDB(data).then(() => {
+      return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      // אם האפליקציה סגורה - נפתח חלון חדש עם ה-URL והנתונים
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow('/');
+        }
+      });
     })
   );
 });
