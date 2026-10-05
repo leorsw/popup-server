@@ -1,84 +1,84 @@
-// sw.js
+const CACHE_NAME = 'ai-push-v2'; // שינוי הגרסה מאלץ רענון מטמון
 
-// פונקציה אמינה לכתיבה ל-IndexedDB
-function saveToDB(data) {
-  return new Promise((resolve, reject) => {
+// התקנת ה-Service Worker ומחיקת מטמון ישן
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('מוחק מטמון ישן:', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// קבלת התראת Push מהשרת ושמירתה ב-IndexedDB
+self.addEventListener('push', (event) => {
+  let data = { title: 'התראה חדשה', body: 'קיבלת הודעה מהסוכן' };
+
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  // שמירה ב-IndexedDB
+  const promiseChain = new Promise((resolve, reject) => {
     const request = indexedDB.open('PushMessagesDB', 1);
 
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
       if (!db.objectStoreNames.contains('messages')) {
         db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
       }
     };
 
-    request.onsuccess = (event) => {
-      const db = event.target.result;
+    request.onsuccess = (e) => {
+      const db = e.target.result;
       const tx = db.transaction('messages', 'readwrite');
       const store = tx.objectStore('messages');
       store.add({
-        title: data.title || 'התראה חדשה',
-        body: data.body || '',
-        timestamp: data.timestamp || Date.now()
+        title: data.title,
+        body: data.body,
+        timestamp: new Date().toISOString()
       });
-      tx.oncomplete = () => resolve();
+
+      tx.oncomplete = () => {
+        resolve();
+      };
     };
 
-    request.onerror = (err) => reject(err);
+    request.onerror = () => resolve(); // ממשיכים גם אם השמירה נכשלה
+  }).then(() => {
+    return self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: 'icon.png',
+      badge: 'icon.png'
+    });
   });
-}
 
-// קבלת הפוש ושמירתו מיד במסד הנתונים
-self.addEventListener('push', (event) => {
-  let payload = { title: 'התראה חדשה', body: '' };
-
-  if (event.data) {
-    try {
-      const json = event.data.json();
-      payload = json.payload || json;
-    } catch (e) {
-      payload.body = event.data.text();
-    }
-  }
-
-  const payloadData = {
-    title: payload.title || 'התראה חדשה',
-    body: payload.body || payload.message || '',
-    timestamp: payload.timestamp || Date.now()
-  };
-
-  event.waitUntil(
-    Promise.all([
-      saveToDB(payloadData),
-      self.registration.showNotification(payloadData.title, {
-        body: payloadData.body,
-        icon: './icon.png', // נתיב יחסי בטוח למניעת 404
-        data: payloadData
-      })
-    ])
-  );
+  event.waitUntil(promiseChain);
 });
 
-// בלחיצה על ההתראה - פתיחת/מיקוד האפליקציה בנתיב יחסי תקין (ללא כפילות שמירה)
+// לחיצה על ההתראה
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  // גזירת הנתיב המדויק של ה-PWA מתוך מיקום ה-SW (מונע 404 סופית)
-  const baseUrl = new URL('./', self.location.href).href;
-
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          return client.focus();
-        }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length > 0) {
+        return clientList[0].focus();
       }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(baseUrl);
-      }
+      return clients.openWindow('/');
     })
   );
 });
-
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
