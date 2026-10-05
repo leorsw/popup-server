@@ -7,7 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 
 // 1. הגדרת CORS מדויקת
-app.use(cors({
+const corsOptions = {
   origin: [
     'https://leorsw.github.io', // ה-Origin התקני של GitHub Pages
     'http://localhost:3000',
@@ -15,10 +15,12 @@ app.use(cors({
   ],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'let-it-bleed-1969']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // טיפול מפורש בבקשות Preflight
-app.options('*', cors());
+app.options('*', cors(corsOptions));
 
 app.use(bodyParser.json());
 
@@ -102,7 +104,7 @@ app.post('/api/ai-notify', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' });
   }
 
-  const { title, message, url } = req.body;
+  const { title, message, body, url } = req.body;
 
   // שליפת כל המנויים מ-Supabase
   const { data: dbSubscriptions, error } = await supabase
@@ -118,10 +120,15 @@ app.post('/api/ai-notify', async (req, res) => {
     return res.status(400).json({ error: 'No subscribed clients found in database.' });
   }
 
+  // תמיכה כפולה ב-body וב-message לתאימות מלאה
+  const contentText = body || message || '';
+
   const payload = JSON.stringify({
     title: title || 'עדכון מסוכן ה-AI',
-    message: message || '',
-    url: url || './'
+    body: contentText,
+    message: contentText,
+    url: url || './',
+    timestamp: Date.now()
   });
 
   const notifications = dbSubscriptions.map(async (row) => {
@@ -135,10 +142,14 @@ app.post('/api/ai-notify', async (req, res) => {
     } catch (err) {
       console.error('Push error for endpoint:', row.endpoint, err.statusCode);
       if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase
-          .from('subscriptions')
-          .delete()
-          .eq('endpoint', row.endpoint);
+        try {
+          await supabase
+            .from('subscriptions')
+            .delete()
+            .eq('endpoint', row.endpoint);
+        } catch (dbErr) {
+          console.error('Failed to clean up expired subscription:', dbErr);
+        }
       }
     }
   });
