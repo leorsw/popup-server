@@ -52,31 +52,30 @@ self.addEventListener('push', (event) => {
       saveToDB(payloadData),
       self.registration.showNotification(payloadData.title, {
         body: payloadData.body,
-        icon: '/icon.png',
+        icon: './icon.png', // נתיב יחסי בטוח למניעת 404
         data: payloadData
       })
     ])
   );
 });
 
-// בלחיצה על ההתראה - שמירה מחדש ליתר ביטחון ופתיחת/מיקוד האפליקציה
+// בלחיצה על ההתראה - פתיחת/מיקוד האפליקציה בנתיב יחסי תקין (ללא כפילות שמירה)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const data = event.notification.data || {};
+  // גזירת הנתיב המדויק של ה-PWA מתוך מיקום ה-SW (מונע 404 סופית)
+  const baseUrl = new URL('./', self.location.href).href;
 
   event.waitUntil(
-    saveToDB(data).then(() => {
-      return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        for (const client of clientList) {
-          if ('focus' in client) {
-            return client.focus();
-          }
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
         }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow('/');
-        }
-      });
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(baseUrl);
+      }
     })
   );
 });
