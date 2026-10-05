@@ -7,31 +7,200 @@
   <!-- תמיכה ב-PWA וב-iOS Safari -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="AI Push">
   <link rel="apple-touch-icon" href="icon.png">
-  <meta name="theme-color" content="#000000">
+
+  <!-- התאמת צבע ה-Status Bar באייפון למצב תצוגה -->
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a202c" media="(prefers-color-scheme: dark)">
 
   <title>התראות AI</title>
-</head>
-<body style="font-family: system-ui, -apple-system, sans-serif; padding: 20px; background-color: #f7fafc;">
 
-  <div style="max-width: 500px; margin: 0 auto; text-align: center;">
+  <style>
+    /* משתני ברירת מחדל (יום) */
+    :root {
+      --bg-color: #f7fafc;
+      --card-bg: #ffffff;
+      --text-main: #2d3748;
+      --text-muted: #a0aec0;
+      --text-title: #2b6cb0;
+      --border-color: #cbd5e0;
+      --item-border: #e2e8f0;
+      --btn-bg: #3182ce;
+      --btn-text: #ffffff;
+    }
+
+    /* מצב לילה - כאשר מוגדר מפורשות data-theme="dark" */
+    [data-theme="dark"] {
+      --bg-color: #1a202c;
+      --card-bg: #2d3748;
+      --text-main: #edf2f7;
+      --text-muted: #a0aec0;
+      --text-title: #63b3ed;
+      --border-color: #4a5568;
+      --item-border: #4a5568;
+      --btn-bg: #3182ce;
+      --btn-text: #ffffff;
+    }
+
+    /* ברירת מחדל של המערכת אם המשתמש לא בחר ידנית */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg-color: #1a202c;
+        --card-bg: #2d3748;
+        --text-main: #edf2f7;
+        --text-muted: #a0aec0;
+        --text-title: #63b3ed;
+        --border-color: #4a5568;
+        --item-border: #4a5568;
+        --btn-bg: #3182ce;
+        --btn-text: #ffffff;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 20px;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 15px;
+    }
+
+    #themeToggleBtn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    #subscribeBtn {
+      padding: 12px 24px;
+      font-size: 16px;
+      cursor: pointer;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: background 0.2s, opacity 0.2s;
+    }
+
+    #subscribeBtn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    #messages-list {
+      border: 1px solid var(--border-color);
+      padding: 15px;
+      border-radius: 8px;
+      min-height: 100px;
+      background: var(--card-bg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .message-item {
+      border-bottom: 1px solid var(--item-border);
+      padding: 10px 0;
+      margin-bottom: 8px;
+    }
+
+    .message-item:last-child {
+      border-bottom: none;
+    }
+
+    .msg-title {
+      color: var(--text-title);
+      font-size: 1.1em;
+      display: block;
+    }
+
+    .msg-body {
+      margin: 4px 0;
+      color: var(--text-main);
+      font-size: 1em;
+    }
+
+    .msg-time {
+      color: var(--text-muted);
+      font-size: 0.8em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="top-bar">
+      <button id="themeToggleBtn">🌙 מצב לילה</button>
+    </div>
+
     <h1>מערכת התראות AI</h1>
-    <button id="subscribeBtn" style="padding: 12px 24px; font-size: 16px; cursor: pointer; background: #3182ce; color: white; border: none; border-radius: 6px; font-weight: bold; transition: background 0.2s;">
-      הפעל התראות
-    </button>
+    <button id="subscribeBtn">הפעל התראות</button>
 
     <section id="messages-container" style="margin-top: 30px; text-align: right;">
-      <h3 style="margin-bottom: 10px; color: #2d3748;">📥 הודעות אחרונות מהסוכן:</h3>
-      <div id="messages-list" style="border: 1px solid #cbd5e0; padding: 15px; border-radius: 8px; min-height: 100px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <p id="no-messages" style="color: #a0aec0; margin: 0; text-align: center;">עוד לא התקבלו הודעות...</p>
+      <h3 style="margin-bottom: 10px;">📥 הודעות אחרונות מהסוכן:</h3>
+      <div id="messages-list">
+        <p id="no-messages" style="color: var(--text-muted); margin: 0; text-align: center;">עוד לא התקבלו הודעות...</p>
       </div>
     </section>
   </div>
 
   <script>
-    // פונקציה לרנדור הודעות מ-IndexedDB
+    // --- 1. ניהול Toggle מצב יום/לילה ---
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const savedTheme = localStorage.getItem('user-theme');
+
+    function updateThemeButtonText(theme) {
+      if (theme === 'dark') {
+        themeToggleBtn.textContent = '☀️ מצב יום';
+      } else {
+        themeToggleBtn.textContent = '🌙 מצב לילה';
+      }
+    }
+
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeButtonText(savedTheme);
+    } else {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      updateThemeButtonText(systemPrefersDark ? 'dark' : 'light');
+    }
+
+    themeToggleBtn.addEventListener('click', () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+      let newTheme;
+      if (currentTheme) {
+        newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      } else {
+        newTheme = systemPrefersDark ? 'light' : 'dark';
+      }
+
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('user-theme', newTheme);
+      updateThemeButtonText(newTheme);
+    });
+
+    // --- 2. רנדור הודעות מ-IndexedDB ---
     function renderMessagesFromDB() {
       const request = indexedDB.open('PushMessagesDB', 1);
 
@@ -53,23 +222,22 @@
           const list = document.getElementById('messages-list');
 
           if (messages.length > 0) {
-            list.innerHTML = ''; // ניקוי הרשימה לפני הצגה מחדש
+            list.innerHTML = '';
 
-            // מציג מההודעה החדשה ביותר לישנה ביותר
             messages.reverse().forEach(msg => {
               const item = document.createElement('div');
-              item.style.cssText = "border-bottom: 1px solid #e2e8f0; padding: 10px 0; margin-bottom: 8px;";
+              item.className = 'message-item';
               
               const titleEl = document.createElement('strong');
-              titleEl.style.cssText = "color: #2b6cb0; font-size: 1.1em; display: block;";
+              titleEl.className = 'msg-title';
               titleEl.textContent = msg.title || 'התראה';
 
               const bodyEl = document.createElement('p');
-              bodyEl.style.cssText = "margin: 4px 0; color: #2d3748; font-size: 1em;";
+              bodyEl.className = 'msg-body';
               bodyEl.textContent = msg.body || '';
 
               const timeEl = document.createElement('small');
-              timeEl.style.cssText = "color: #a0aec0; font-size: 0.8em;";
+              timeEl.className = 'msg-time';
               timeEl.textContent = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('he-IL') : '';
 
               item.appendChild(titleEl);
@@ -82,80 +250,7 @@
       };
     }
 
-    // 1. טעינה ראשונית
     renderMessagesFromDB();
 
-    // 2. רענון אקטיבי בעת חזרה לאפליקציה / מעבר לפרונט
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        renderMessagesFromDB();
-      }
-    });
-
-    // 3. בודק שינויים ב-IndexedDB באופן מחזורי
-    setInterval(renderMessagesFromDB, 2000);
-
-    const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
-    const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
-
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    }
-
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      navigator.serviceWorker.register('./sw.js')
-        .then((reg) => console.log('SW נרשם בהצלחה'))
-        .catch(err => console.error('שגיאה ברישום SW:', err));
-    }
-
-    const btn = document.getElementById('subscribeBtn');
-
-    btn.addEventListener('click', async () => {
-      try {
-        btn.disabled = true;
-        btn.textContent = 'מפעיל התראות...';
-
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          alert('יש לאשר התראות בדפדפן');
-          btn.disabled = false;
-          btn.textContent = 'הפעל התראות';
-          return;
-        }
-
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
-        });
-
-        const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
-          method: 'POST',
-          body: JSON.stringify(subscription),
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        if (res.ok) {
-          btn.textContent = '✓ ההתראות פעילות';
-          btn.style.background = '#38a169';
-          alert('ההתראות הופעלו ונשמרו בשרת בהצלחה!');
-        } else {
-          throw new Error('Server response not OK');
-        }
-      } catch (err) {
-        console.error('שגיאה:', err);
-        alert('אירעה שגיאה בהפעלת ההתראות');
-        btn.disabled = false;
-        btn.textContent = 'הפעל התראות';
-      }
-    });
-  </script>
-</body>
-</html>
+      if (document.visibilityState === 'visible')
