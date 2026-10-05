@@ -80,14 +80,16 @@
     }
 
     #themeToggleBtn {
-      background: transparent;
+      background: var(--card-bg);
       border: 1px solid var(--border-color);
       color: var(--text-main);
-      padding: 6px 12px;
+      padding: 8px 16px;
       border-radius: 20px;
       cursor: pointer;
       font-size: 14px;
-      transition: all 0.2s;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      transition: all 0.2s ease-in-out;
     }
 
     #subscribeBtn {
@@ -253,4 +255,75 @@
     renderMessagesFromDB();
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible')
+      if (document.visibilityState === 'visible') {
+        renderMessagesFromDB();
+      }
+    });
+
+    setInterval(renderMessagesFromDB, 2000);
+
+    // --- 3. חיבור ל-Service Worker ורישום להתראות ---
+    const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
+    const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.register('./sw.js')
+        .then((reg) => console.log('SW נרשם בהצלחה'))
+        .catch(err => console.error('שגיאה ברישום SW:', err));
+    }
+
+    const btn = document.getElementById('subscribeBtn');
+
+    btn.addEventListener('click', async () => {
+      try {
+        btn.disabled = true;
+        btn.textContent = 'מפעיל התראות...';
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          alert('יש לאשר התראות בדפדפן');
+          btn.disabled = false;
+          btn.textContent = 'הפעל התראות';
+          return;
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
+        });
+
+        const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
+          method: 'POST',
+          body: JSON.stringify(subscription),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.ok) {
+          btn.textContent = '✓ ההתראות פעילות';
+          btn.style.background = '#38a169';
+          alert('ההתראות הופעלו ונשמרו בשרת בהצלחה!');
+        } else {
+          throw new Error('Server response not OK');
+        }
+      } catch (err) {
+        console.error('שגיאה:', err);
+        alert('אירעה שגיאה בהפעלת ההתראות');
+        btn.disabled = false;
+        btn.textContent = 'הפעל התראות';
+      }
+    });
+  </script>
+</body>
+</html>
