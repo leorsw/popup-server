@@ -18,7 +18,7 @@
   <title>התראות AI</title>
 
   <style>
-    /* משתני ברירת מחדל (יום) */
+    /* משתני ברירת מחדל (מצב יום / Light) */
     :root {
       --bg-color: #f7fafc;
       --card-bg: #ffffff;
@@ -31,20 +31,7 @@
       --btn-text: #ffffff;
     }
 
-    /* מצב לילה - כאשר מוגדר מפורשות data-theme="dark" */
-    [data-theme="dark"] {
-      --bg-color: #1a202c;
-      --card-bg: #2d3748;
-      --text-main: #edf2f7;
-      --text-muted: #a0aec0;
-      --text-title: #63b3ed;
-      --border-color: #4a5568;
-      --item-border: #4a5568;
-      --btn-bg: #3182ce;
-      --btn-text: #ffffff;
-    }
-
-    /* ברירת מחדל של המערכת אם המשתמש לא בחר ידנית */
+    /* מצב כהה אוטומטי לפי הגדרות המערכת (iOS/Desktop) */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         --bg-color: #1a202c;
@@ -57,6 +44,31 @@
         --btn-bg: #3182ce;
         --btn-text: #ffffff;
       }
+    }
+
+    /* דריסה ידנית כשהמשתמש בחר מפורשות בלחצן */
+    html[data-theme="dark"] {
+      --bg-color: #1a202c;
+      --card-bg: #2d3748;
+      --text-main: #edf2f7;
+      --text-muted: #a0aec0;
+      --text-title: #63b3ed;
+      --border-color: #4a5568;
+      --item-border: #4a5568;
+      --btn-bg: #3182ce;
+      --btn-text: #ffffff;
+    }
+
+    html[data-theme="light"] {
+      --bg-color: #f7fafc;
+      --card-bg: #ffffff;
+      --text-main: #2d3748;
+      --text-muted: #a0aec0;
+      --text-title: #2b6cb0;
+      --border-color: #cbd5e0;
+      --item-border: #e2e8f0;
+      --btn-bg: #3182ce;
+      --btn-text: #ffffff;
     }
 
     body {
@@ -166,40 +178,44 @@
   </div>
 
   <script>
-    // --- 1. ניהול Toggle מצב יום/לילה ---
+    // --- 1. ניהול Toggle ומערכת מצב יום/לילה ---
     const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    function getCurrentEffectiveTheme() {
+      const explicitTheme = document.documentElement.getAttribute('data-theme');
+      if (explicitTheme) return explicitTheme;
+      return darkModeQuery.matches ? 'dark' : 'light';
+    }
+
+    function updateButtonUI() {
+      const current = getCurrentEffectiveTheme();
+      themeToggleBtn.textContent = current === 'dark' ? '☀️ מצב יום' : '🌙 מצב לילה';
+    }
+
+    // טעינה ראשונית לפי localStorage (אם המשתמש בחר ידנית בעבר)
     const savedTheme = localStorage.getItem('user-theme');
-
-    function updateThemeButtonText(theme) {
-      if (theme === 'dark') {
-        themeToggleBtn.textContent = '☀️ מצב יום';
-      } else {
-        themeToggleBtn.textContent = '🌙 מצב לילה';
-      }
-    }
-
-    if (savedTheme) {
+    if (savedTheme === 'dark' || savedTheme === 'light') {
       document.documentElement.setAttribute('data-theme', savedTheme);
-      updateThemeButtonText(savedTheme);
-    } else {
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      updateThemeButtonText(systemPrefersDark ? 'dark' : 'light');
     }
+    updateButtonUI();
 
-    themeToggleBtn.addEventListener('click', () => {
-      const currentTheme = document.documentElement.getAttribute('data-theme');
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-      let newTheme;
-      if (currentTheme) {
-        newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      } else {
-        newTheme = systemPrefersDark ? 'light' : 'dark';
+    // האזנה לשינויים בהגדרות iOS בזמן אמת
+    darkModeQuery.addEventListener('change', () => {
+      // אם המשתמש לא דרס ידנית את הנושא, העמוד יעבור אוטומטית והכפתור יתעדכן
+      if (!localStorage.getItem('user-theme')) {
+        updateButtonUI();
       }
+    });
+
+    // לחיצה על הלחצן לדריסה ידנית
+    themeToggleBtn.addEventListener('click', () => {
+      const activeTheme = getCurrentEffectiveTheme();
+      const newTheme = activeTheme === 'dark' ? 'light' : 'dark';
 
       document.documentElement.setAttribute('data-theme', newTheme);
       localStorage.setItem('user-theme', newTheme);
-      updateThemeButtonText(newTheme);
+      updateButtonUI();
     });
 
     // --- 2. רנדור הודעות מ-IndexedDB ---
