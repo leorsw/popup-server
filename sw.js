@@ -73,12 +73,22 @@ self.addEventListener('push', (event) => {
 // לחיצה על ההתראה
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+
+  // כתובת היעד המדויקת של האפליקציה ב-GitHub Pages
+  const targetUrl = self.location.origin + '/popup-server/';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      if (clientList.length > 0) {
-        return clientList[0].focus();
+      // אם הלשונית כבר פתוחה - התמקד בה
+      for (const client of clientList) {
+        if (client.url.includes('/popup-server/') && 'focus' in client) {
+          return client.focus();
+        }
       }
-      return clients.openWindow('/');
+      // אם הלשונית אינה פתוחה - פתח את הכתובת הנכונה
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });
