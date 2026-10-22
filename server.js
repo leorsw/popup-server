@@ -13,7 +13,7 @@ const corsOptions = {
     'http://localhost:3000',
     'http://127.0.0.1:5500'
   ],
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'let-it-bleed-1969']
 };
 
@@ -86,7 +86,50 @@ app.post('/api/subscribe', async (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 5. שליחת התראה לכל המנויים (מאובטח ב-API Key)
+// 5. שליפת רשימת המכשירים/המנויים המחוברים
+app.get('/api/devices', async (req, res) => {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('id, endpoint, created_at');
+
+  if (error) {
+    console.error('Error fetching devices:', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  const devices = (data || []).map((sub, index) => ({
+    id: sub.id || sub.endpoint,
+    endpoint: sub.endpoint,
+    name: `מכשיר ${index + 1}`,
+    createdAt: sub.created_at
+  }));
+
+  res.json({ devices });
+});
+
+// 6. ניתוק/מחיקת מכשיר לפי Endpoint
+app.delete('/api/unsubscribe', async (req, res) => {
+  const { endpoint } = req.body;
+
+  if (!endpoint) {
+    return res.status(400).json({ error: 'Endpoint is required' });
+  }
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .delete()
+    .eq('endpoint', endpoint);
+
+  if (error) {
+    console.error('Error deleting subscription from Supabase:', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  console.log('Device disconnected successfully:', endpoint);
+  res.json({ success: true, message: 'Device disconnected successfully' });
+});
+
+// 7. שליחת התראה לכל המנויים (מאובטח ב-API Key)
 app.post('/api/ai-notify', async (req, res) => {
   // express הופך headers ל-lowercase אוטומטית
   const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
@@ -120,7 +163,7 @@ app.post('/api/ai-notify', async (req, res) => {
     return res.status(400).json({ error: 'No subscribed clients found in database.' });
   }
 
-  // תמיכה כפולה ב-body וב-message לתאימות מלאה
+  // תמיכה כפולה ב-body וב-message לתאימות מלאה מול ה-Service Worker
   const contentText = body || message || '';
 
   const payload = JSON.stringify({
@@ -134,29 +177,3 @@ app.post('/api/ai-notify', async (req, res) => {
   const notifications = dbSubscriptions.map(async (row) => {
     const subFormat = {
       endpoint: row.endpoint,
-      keys: row.keys
-    };
-
-    try {
-      await webpush.sendNotification(subFormat, payload);
-    } catch (err) {
-      console.error('Push error for endpoint:', row.endpoint, err.statusCode);
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        try {
-          await supabase
-            .from('subscriptions')
-            .delete()
-            .eq('endpoint', row.endpoint);
-        } catch (dbErr) {
-          console.error('Failed to clean up expired subscription:', dbErr);
-        }
-      }
-    }
-  });
-
-  await Promise.all(notifications);
-  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
