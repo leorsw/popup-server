@@ -25,10 +25,6 @@ app.use(bodyParser.json());
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
 
-if (!supabaseUrl || !supabaseKey) {
-  console.warn('⚠️ WARNING: SUPABASE_URL or SUPABASE_KEY is missing in Environment Variables!');
-}
-
 const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseKey || 'placeholder-key'
@@ -49,48 +45,46 @@ if (publicVapidKey && privateVapidKey) {
   } catch (error) {
     console.error('Failed to set VAPID details:', error.message);
   }
-} else {
-  console.warn('VAPID keys are missing or not set properly.');
 }
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
 
 // 4. שמירת / עדכון מנוי
 app.post('/api/subscribe', async (req, res) => {
-  const { subscription, deviceName } = req.body.subscription ? req.body : { subscription: req.body, deviceName: null };
+  const bodyData = req.body || {};
+  const subscription = bodyData.subscription || bodyData;
+  const deviceName = bodyData.deviceName || 'מכשיר נייד';
 
   if (!subscription || !subscription.endpoint) {
     return res.status(400).json({ error: 'Invalid subscription data' });
   }
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('subscriptions')
     .upsert(
       {
         endpoint: subscription.endpoint,
         keys: subscription.keys,
-        device_name: deviceName || 'מכשיר נייד'
+        device_name: deviceName
       },
       { onConflict: 'endpoint' }
     );
 
   if (error) {
-    console.error('Error saving subscription to Supabase:', error);
+    console.error('Error saving subscription:', error);
     return res.status(500).json({ error: error.message });
   }
 
-  console.log('Subscription saved successfully');
   res.status(201).json({ success: true });
 });
 
-// 5. שליפת רשימת מכשירים מחוברים
+// 5. שליפת מכשירים
 app.get('/api/devices', async (req, res) => {
   const { data, error } = await supabase
     .from('subscriptions')
     .select('id, endpoint, device_name, created_at');
 
   if (error) {
-    console.error('Error fetching devices:', error);
     return res.status(500).json({ error: error.message });
   }
 
@@ -118,14 +112,13 @@ app.post('/api/update-device-name', async (req, res) => {
     .eq('endpoint', endpoint);
 
   if (error) {
-    console.error('Error updating device name:', error);
     return res.status(500).json({ error: error.message });
   }
 
   res.json({ success: true });
 });
 
-// 7. ניתוק / מחיקת מכשיר
+// 7. ניתוק מכשיר
 app.delete('/api/unsubscribe', async (req, res) => {
   const { endpoint } = req.body;
 
@@ -139,21 +132,19 @@ app.delete('/api/unsubscribe', async (req, res) => {
     .eq('endpoint', endpoint);
 
   if (error) {
-    console.error('Error deleting subscription:', error);
     return res.status(500).json({ error: error.message });
   }
 
-  console.log('Device disconnected successfully:', endpoint);
-  res.json({ success: true, message: 'Device disconnected successfully' });
+  res.json({ success: true });
 });
 
-// 8. שליחת התראה (מאובטח ב-API Key)
+// 8. שליחת התראה
 app.post('/api/ai-notify', async (req, res) => {
   const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
   const expectedApiKey = process.env.API_SECRET_KEY;
 
   if (!expectedApiKey || apiKey !== expectedApiKey) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const { title, message, body, url } = req.body;
@@ -162,12 +153,8 @@ app.post('/api/ai-notify', async (req, res) => {
     .from('subscriptions')
     .select('*');
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  if (!dbSubscriptions || dbSubscriptions.length === 0) {
-    return res.status(400).json({ error: 'No subscribed clients found in database.' });
+  if (error || !dbSubscriptions || dbSubscriptions.length === 0) {
+    return res.status(400).json({ error: 'No subscribers found' });
   }
 
   const contentText = body || message || '';
@@ -181,19 +168,11 @@ app.post('/api/ai-notify', async (req, res) => {
   });
 
   const notifications = dbSubscriptions.map(async (row) => {
-    const subFormat = {
-      endpoint: row.endpoint,
-      keys: row.keys
-    };
-
     try {
-      await webpush.sendNotification(subFormat, payload);
+      await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
     } catch (err) {
       if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase
-          .from('subscriptions')
-          .delete()
-          .eq('endpoint', row.endpoint);
+        await supabase.from('subscriptions').delete().eq('endpoint', row.endpoint);
       }
     }
   });
@@ -203,4 +182,4 @@ app.post('/api/ai-notify', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
