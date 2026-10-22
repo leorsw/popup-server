@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// 1. הגדרת CORS
+// 1. הגדרת CORS מקיפה
 const corsOptions = {
   origin: [
     'https://leorsw.github.io',
@@ -24,6 +24,10 @@ app.use(bodyParser.json());
 // 2. אתחול Supabase
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
+
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('⚠️ WARNING: SUPABASE_URL or SUPABASE_KEY is missing in Environment Variables!');
+}
 
 const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
@@ -45,6 +49,8 @@ if (publicVapidKey && privateVapidKey) {
   } catch (error) {
     console.error('Failed to set VAPID details:', error.message);
   }
+} else {
+  console.warn('VAPID keys are missing or not set properly.');
 }
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
@@ -71,115 +77,27 @@ app.post('/api/subscribe', async (req, res) => {
     );
 
   if (error) {
-    console.error('Error saving subscription:', error);
+    console.error('Error saving subscription to Supabase:', error);
     return res.status(500).json({ error: error.message });
   }
 
+  console.log('Subscription saved successfully');
   res.status(201).json({ success: true });
 });
 
-// 5. שליפת מכשירים
+// 5. שליפת רשימת מכשירים בצורה מאובטחת
 app.get('/api/devices', async (req, res) => {
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .select('id, endpoint, device_name, created_at');
+  try {
+    const { data, error } = await supabase
+      .from('subscriptions')
+      .select('*');
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  const devices = (data || []).map((sub, index) => ({
-    id: sub.id || sub.endpoint,
-    endpoint: sub.endpoint,
-    name: sub.device_name || `מכשיר ${index + 1}`,
-    createdAt: sub.created_at
-  }));
-
-  res.json({ devices });
-});
-
-// 6. עדכון שם מכשיר
-app.post('/api/update-device-name', async (req, res) => {
-  const { endpoint, deviceName } = req.body;
-
-  if (!endpoint || !deviceName) {
-    return res.status(400).json({ error: 'Missing endpoint or deviceName' });
-  }
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({ device_name: deviceName })
-    .eq('endpoint', endpoint);
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  res.json({ success: true });
-});
-
-// 7. ניתוק מכשיר
-app.delete('/api/unsubscribe', async (req, res) => {
-  const { endpoint } = req.body;
-
-  if (!endpoint) {
-    return res.status(400).json({ error: 'Endpoint is required' });
-  }
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .delete()
-    .eq('endpoint', endpoint);
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  res.json({ success: true });
-});
-
-// 8. שליחת התראה
-app.post('/api/ai-notify', async (req, res) => {
-  const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
-  const expectedApiKey = process.env.API_SECRET_KEY;
-
-  if (!expectedApiKey || apiKey !== expectedApiKey) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const { title, message, body, url } = req.body;
-
-  const { data: dbSubscriptions, error } = await supabase
-    .from('subscriptions')
-    .select('*');
-
-  if (error || !dbSubscriptions || dbSubscriptions.length === 0) {
-    return res.status(400).json({ error: 'No subscribers found' });
-  }
-
-  const contentText = body || message || '';
-
-  const payload = JSON.stringify({
-    title: title || 'עדכון מסוכן ה-AI',
-    body: contentText,
-    message: contentText,
-    url: url || './',
-    timestamp: Date.now()
-  });
-
-  const notifications = dbSubscriptions.map(async (row) => {
-    try {
-      await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
-    } catch (err) {
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase.from('subscriptions').delete().eq('endpoint', row.endpoint);
-      }
+    if (error) {
+      console.error('Supabase fetch error:', error);
+      return res.status(500).json({ error: error.message });
     }
-  });
 
-  await Promise.all(notifications);
-  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const devices = (data || []).map((sub, index) => ({
+      id: sub.id || sub.endpoint,
+      endpoint: sub.endpoint,
+      name: sub.device
