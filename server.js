@@ -6,10 +6,10 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// 1. הגדרת CORS מדויקת
+// 1. הגדרת CORS
 const corsOptions = {
   origin: [
-    'https://leorsw.github.io', // ה-Origin התקני של GitHub Pages
+    'https://leorsw.github.io',
     'http://localhost:3000',
     'http://127.0.0.1:5500'
   ],
@@ -18,13 +18,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// טיפול מפורש בבקשות Preflight
 app.options('*', cors(corsOptions));
-
 app.use(bodyParser.json());
 
-// 2. אתחול לקוח Supabase
+// 2. אתחול Supabase
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
 
@@ -37,7 +34,7 @@ const supabase = createClient(
   supabaseKey || 'placeholder-key'
 );
 
-// 3. הגדרת מפתחות VAPID
+// 3. הגדרת VAPID
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 
@@ -58,21 +55,21 @@ if (publicVapidKey && privateVapidKey) {
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
 
-// 4. שמירת Subscription חדש במסד הנתונים
+// 4. שמירת / עדכון מנוי
 app.post('/api/subscribe', async (req, res) => {
-  const subscription = req.body;
+  const { subscription, deviceName } = req.body.subscription ? req.body : { subscription: req.body, deviceName: null };
 
   if (!subscription || !subscription.endpoint) {
     return res.status(400).json({ error: 'Invalid subscription data' });
   }
 
-  // upsert: מכניס מנוי חדש, ואם ה-endpoint כבר קיים - מעדכן אותו
   const { data, error } = await supabase
     .from('subscriptions')
     .upsert(
       {
         endpoint: subscription.endpoint,
-        keys: subscription.keys
+        keys: subscription.keys,
+        device_name: deviceName || 'מכשיר נייד'
       },
       { onConflict: 'endpoint' }
     );
@@ -82,15 +79,15 @@ app.post('/api/subscribe', async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  console.log('Subscription saved successfully to DB');
+  console.log('Subscription saved successfully');
   res.status(201).json({ success: true });
 });
 
-// 5. שליפת רשימת המכשירים/המנויים המחוברים
+// 5. שליפת רשימת מכשירים מחוברים
 app.get('/api/devices', async (req, res) => {
   const { data, error } = await supabase
     .from('subscriptions')
-    .select('id, endpoint, created_at');
+    .select('id, endpoint, device_name, created_at');
 
   if (error) {
     console.error('Error fetching devices:', error);
@@ -100,14 +97,35 @@ app.get('/api/devices', async (req, res) => {
   const devices = (data || []).map((sub, index) => ({
     id: sub.id || sub.endpoint,
     endpoint: sub.endpoint,
-    name: `מכשיר ${index + 1}`,
+    name: sub.device_name || `מכשיר ${index + 1}`,
     createdAt: sub.created_at
   }));
 
   res.json({ devices });
 });
 
-// 6. ניתוק/מחיקת מכשיר לפי Endpoint
+// 6. עדכון שם מכשיר
+app.post('/api/update-device-name', async (req, res) => {
+  const { endpoint, deviceName } = req.body;
+
+  if (!endpoint || !deviceName) {
+    return res.status(400).json({ error: 'Missing endpoint or deviceName' });
+  }
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update({ device_name: deviceName })
+    .eq('endpoint', endpoint);
+
+  if (error) {
+    console.error('Error updating device name:', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ success: true });
+});
+
+// 7. ניתוק / מחיקת מכשיר
 app.delete('/api/unsubscribe', async (req, res) => {
   const { endpoint } = req.body;
 
@@ -121,7 +139,7 @@ app.delete('/api/unsubscribe', async (req, res) => {
     .eq('endpoint', endpoint);
 
   if (error) {
-    console.error('Error deleting subscription from Supabase:', error);
+    console.error('Error deleting subscription:', error);
     return res.status(500).json({ error: error.message });
   }
 
@@ -129,33 +147,22 @@ app.delete('/api/unsubscribe', async (req, res) => {
   res.json({ success: true, message: 'Device disconnected successfully' });
 });
 
-// 7. שליחת התראה לכל המנויים (מאובטח ב-API Key)
+// 8. שליחת התראה (מאובטח ב-API Key)
 app.post('/api/ai-notify', async (req, res) => {
-  // express הופך headers ל-lowercase אוטומטית
   const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
   const expectedApiKey = process.env.API_SECRET_KEY;
 
-  console.log(`[AUTH CHECK] Received Key: "${apiKey}" | Expected Key Exists: ${!!expectedApiKey}`);
-
-  if (!expectedApiKey) {
-    console.error('❌ API_SECRET_KEY is missing in Render environment variables!');
-    return res.status(500).json({ error: 'Server misconfiguration: API_SECRET_KEY is not set' });
-  }
-
-  if (apiKey !== expectedApiKey) {
-    console.warn(`❌ Unauthorized access attempt. Received key does not match API_SECRET_KEY.`);
+  if (!expectedApiKey || apiKey !== expectedApiKey) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' });
   }
 
   const { title, message, body, url } = req.body;
 
-  // שליפת כל המנויים מ-Supabase
   const { data: dbSubscriptions, error } = await supabase
     .from('subscriptions')
     .select('*');
 
   if (error) {
-    console.error('Error fetching subscriptions:', error);
     return res.status(500).json({ error: error.message });
   }
 
@@ -163,7 +170,6 @@ app.post('/api/ai-notify', async (req, res) => {
     return res.status(400).json({ error: 'No subscribed clients found in database.' });
   }
 
-  // תמיכה כפולה ב-body וב-message לתאימות מלאה מול ה-Service Worker
   const contentText = body || message || '';
 
   const payload = JSON.stringify({
@@ -177,3 +183,24 @@ app.post('/api/ai-notify', async (req, res) => {
   const notifications = dbSubscriptions.map(async (row) => {
     const subFormat = {
       endpoint: row.endpoint,
+      keys: row.keys
+    };
+
+    try {
+      await webpush.sendNotification(subFormat, payload);
+    } catch (err) {
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await supabase
+          .from('subscriptions')
+          .delete()
+          .eq('endpoint', row.endpoint);
+      }
+    }
+  });
+
+  await Promise.all(notifications);
+  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port
