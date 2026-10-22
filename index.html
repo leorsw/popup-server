@@ -4,21 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <!-- תמיכה ב-PWA וב-iOS Safari -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="AI Push">
   <link rel="apple-touch-icon" href="icon.png">
 
-  <!-- התאמת צבע ה-Status Bar באייפון למצב תצוגה -->
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1a202c" media="(prefers-color-scheme: dark)">
 
   <title>התראות AI</title>
 
   <style>
-    /* משתני ברירת מחדל (מצב יום / Light) */
     :root {
       --bg-color: #f7fafc;
       --card-bg: #ffffff;
@@ -30,9 +27,9 @@
       --btn-bg: #3182ce;
       --btn-text: #ffffff;
       --link-color: #3182ce;
+      --danger-color: #e53e3e;
     }
 
-    /* מצב כהה אוטומטי לפי הגדרות המערכת (iOS/Desktop) */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         --bg-color: #1a202c;
@@ -48,7 +45,6 @@
       }
     }
 
-    /* דריסה ידנית כשהמשתמש בחר מפורשות בלחצן */
     html[data-theme="dark"] {
       --bg-color: #1a202c;
       --card-bg: #2d3748;
@@ -91,15 +87,16 @@
 
     .top-bar {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 15px;
     }
 
-    #themeToggleBtn {
+    .action-btn {
       background: var(--card-bg);
       border: 1px solid var(--border-color);
       color: var(--text-main);
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 20px;
       cursor: pointer;
       font-size: 14px;
@@ -158,7 +155,6 @@
       line-height: 1.4;
     }
 
-    /* עיצוב קישורים בתוך הודעה */
     .msg-body a {
       color: var(--link-color);
       text-decoration: underline;
@@ -170,13 +166,65 @@
       color: var(--text-muted);
       font-size: 0.8em;
     }
+
+    /* עיצוב המודאל (חלון ניהול מכשירים) */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-content {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 450px;
+      text-align: right;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--item-border);
+    }
+
+    .device-item:last-child {
+      border-bottom: none;
+    }
+
+    .disconnect-btn {
+      background: #fff5f5;
+      color: var(--danger-color);
+      border: 1px solid var(--danger-color);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    .disconnect-btn:hover {
+      background: var(--danger-color);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
 
   <div class="container">
     <div class="top-bar">
-      <button id="themeToggleBtn">🌙 מצב לילה</button>
+      <button id="devicesBtn" class="action-btn">📱 מכשירים מחוברים</button>
+      <button id="themeToggleBtn" class="action-btn">🌙 מצב לילה</button>
     </div>
 
     <h1>מערכת התראות AI</h1>
@@ -190,7 +238,24 @@
     </section>
   </div>
 
+  <!-- חלון מודאל לניהול מכשירים -->
+  <div id="devicesModal" class="modal-overlay">
+    <div class="modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="margin: 0; font-size: 1.3em;">📱 ניהול מכשירים מחוברים</h2>
+        <button id="closeModalBtn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-main);">&times;</button>
+      </div>
+      
+      <div id="devicesList" style="max-height: 300px; overflow-y: auto;">
+        <p style="text-align: center; color: var(--text-muted);">טוען מכשירים...</p>
+      </div>
+    </div>
+  </div>
+
   <script>
+    const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
+    const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
+
     // --- 1. ניהול Toggle ומערכת מצב יום/לילה ---
     const themeToggleBtn = document.getElementById('themeToggleBtn');
     const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -227,12 +292,104 @@
       updateButtonUI();
     });
 
-    // --- 2. מנגנון המרת טקסט לקישורים לחיצים ---
+    // --- 2. מנגנון ניהול מכשירים מחוברים ---
+    const devicesBtn = document.getElementById('devicesBtn');
+    const devicesModal = document.getElementById('devicesModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const devicesList = document.getElementById('devicesList');
+
+    devicesBtn.addEventListener('click', () => {
+      devicesModal.style.display = 'flex';
+      loadConnectedDevices();
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+      devicesModal.style.display = 'none';
+    });
+
+    devicesModal.addEventListener('click', (e) => {
+      if (e.target === devicesModal) devicesModal.style.display = 'none';
+    });
+
+    async function loadConnectedDevices() {
+      devicesList.innerHTML = '<p style="text-align: center; color: var(--text-muted);">טוען מכשירים...</p>';
+
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const currentSub = await reg.pushManager.getSubscription();
+        const currentEndpoint = currentSub ? currentSub.endpoint : null;
+
+        const res = await fetch(`${BACKEND_URL}/api/devices`);
+        if (!res.ok) throw new Error('נכשל בטעינת מכשירים');
+
+        const data = await res.json();
+        const devices = data.devices || [];
+
+        if (devices.length === 0) {
+          devicesList.innerHTML = '<p style="text-align: center; color: var(--text-muted);">אין מכשירים מחוברים כרגע</p>';
+          return;
+        }
+
+        devicesList.innerHTML = '';
+        devices.forEach((dev, idx) => {
+          const isCurrent = currentEndpoint && dev.endpoint === currentEndpoint;
+
+          const devEl = document.createElement('div');
+          devEl.className = 'device-item';
+          devEl.innerHTML = `
+            <div>
+              <strong>${isCurrent ? '📱 מכשיר זה' : '📱 מכשיר ' + (idx + 1)}</strong>
+              <div style="font-size: 0.8em; color: var(--text-muted);">
+                ${dev.createdAt ? new Date(dev.createdAt).toLocaleDateString('he-IL') : 'פעיל'}
+              </div>
+            </div>
+            <button class="disconnect-btn" onclick="disconnectDevice('${dev.endpoint}', ${isCurrent})">
+              נתק
+            </button>
+          `;
+          devicesList.appendChild(devEl);
+        });
+      } catch (err) {
+        console.error(err);
+        devicesList.innerHTML = '<p style="text-align: center; color: var(--danger-color);">שגיאה שטוענת את רשימת המכשירים</p>';
+      }
+    }
+
+    async function disconnectDevice(endpoint, isCurrentDevice) {
+      if (!confirm('האם אתה בטוח שברצונך לנתק מכשיר זה מקבלת התראות?')) return;
+
+      try {
+        // אם זה המכשיר הנוכחי - מבטלים את ה-Subscription בדפדפן
+        if (isCurrentDevice) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) await sub.unsubscribe();
+          
+          const btn = document.getElementById('subscribeBtn');
+          btn.disabled = false;
+          btn.textContent = 'הפעל התראות';
+          btn.style.background = 'var(--btn-bg)';
+        }
+
+        // שליחת בקשת ניתוק לשרת
+        await fetch(`${BACKEND_URL}/api/unsubscribe`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint })
+        });
+
+        alert('המכשיר נותק בהצלחה');
+        loadConnectedDevices();
+      } catch (err) {
+        console.error('שגיאה בניתוק מכשיר:', err);
+        alert('אירעה שגיאה בעת ניתוק המכשיר');
+      }
+    }
+
+    // --- 3. מנגנון המרת טקסט לקישורים לחיצים ---
     function linkify(text) {
       if (!text) return '';
-      
       const urlRegex = /(https?:\/\/[^\s]+)/g;
-      
       return text.replace(urlRegex, (url) => {
         let cleanUrl = url;
         let trailingPunctuation = '';
@@ -241,12 +398,11 @@
           cleanUrl = match[1];
           trailingPunctuation = match[2];
         }
-        
         return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${trailingPunctuation}`;
       });
     }
 
-    // --- 3. רנדור הודעות מ-IndexedDB ---
+    // --- 4. רנדור הודעות מ-IndexedDB ---
     function renderMessagesFromDB() {
       const request = indexedDB.open('PushMessagesDB', 1);
 
@@ -306,10 +462,7 @@
 
     setInterval(renderMessagesFromDB, 2000);
 
-    // --- 4. חיבור ל-Service Worker ורישום להתראות ---
-    const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
-    const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
-
+    // --- 5. חיבור ל-Service Worker ורישום להתראות ---
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
       const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -323,7 +476,15 @@
 
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.register('./sw.js')
-        .then((reg) => console.log('SW נרשם בהצלחה'))
+        .then(async (reg) => {
+          console.log('SW נרשם בהצלחה');
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            const btn = document.getElementById('subscribeBtn');
+            btn.textContent = '✓ ההתראות פעילות';
+            btn.style.background = '#38a169';
+          }
+        })
         .catch(err => console.error('שגיאה ברישום SW:', err));
     }
 
