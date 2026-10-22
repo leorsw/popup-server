@@ -4,12 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
+  <!-- תמיכה ב-PWA וב-iOS Safari -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="AI Push">
   <link rel="apple-touch-icon" href="icon.png">
 
+  <!-- התאמת צבע ה-Status Bar באייפון למצב תצוגה -->
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1a202c" media="(prefers-color-scheme: dark)">
 
@@ -167,7 +169,7 @@
       font-size: 0.8em;
     }
 
-    /* עיצוב המודאל (חלון ניהול מכשירים) */
+    /* עיצוב מודאל ניהול מכשירים */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -238,7 +240,7 @@
     </section>
   </div>
 
-  <!-- חלון מודאל לניהול מכשירים -->
+  <!-- חלון מודאל ניהול מכשירים -->
   <div id="devicesModal" class="modal-overlay">
     <div class="modal-content">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -256,7 +258,21 @@
     const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
 
-    // --- 1. ניהול Toggle ומערכת מצב יום/לילה ---
+    // --- 1. זיהוי שם מכשיר אוטומטי ---
+    function getDeviceDefaultName() {
+      const savedName = localStorage.getItem('custom_device_name');
+      if (savedName) return savedName;
+
+      const ua = navigator.userAgent;
+      if (/iPhone/i.test(ua)) return 'iPhone';
+      if (/iPad/i.test(ua)) return 'iPad';
+      if (/Android/i.test(ua)) return 'מכשיר אנדרואיד';
+      if (/Macintosh/i.test(ua)) return 'מחשב Mac';
+      if (/Windows/i.test(ua)) return 'מחשב Windows';
+      return 'מכשיר נייד';
+    }
+
+    // --- 2. ניהול מצב יום/לילה ---
     const themeToggleBtn = document.getElementById('themeToggleBtn');
     const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -292,7 +308,7 @@
       updateButtonUI();
     });
 
-    // --- 2. מנגנון ניהול מכשירים מחוברים ---
+    // --- 3. ניהול מכשירים מחוברים (הצגה, עריכת שם, וניתוק) ---
     const devicesBtn = document.getElementById('devicesBtn');
     const devicesModal = document.getElementById('devicesModal');
     const closeModalBtn = document.getElementById('closeModalBtn');
@@ -333,20 +349,32 @@
         devicesList.innerHTML = '';
         devices.forEach((dev, idx) => {
           const isCurrent = currentEndpoint && dev.endpoint === currentEndpoint;
-
           const devEl = document.createElement('div');
           devEl.className = 'device-item';
-          devEl.innerHTML = `
-            <div>
-              <strong>${isCurrent ? '📱 מכשיר זה' : '📱 מכשיר ' + (idx + 1)}</strong>
-              <div style="font-size: 0.8em; color: var(--text-muted);">
-                ${dev.createdAt ? new Date(dev.createdAt).toLocaleDateString('he-IL') : 'פעיל'}
+
+          if (isCurrent) {
+            devEl.innerHTML = `
+              <div style="flex: 1; margin-left: 10px;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 4px;">
+                  <input type="text" id="deviceNameInput" value="${dev.name}" style="padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; width: 140px; background: var(--card-bg); color: var(--text-main);">
+                  <button onclick="saveCurrentDeviceName('${dev.endpoint}')" style="padding: 6px 12px; font-size: 13px; cursor: pointer; border-radius: 6px; border: none; background: var(--btn-bg); color: white; font-weight: bold;">שמור</button>
+                </div>
+                <small style="color: var(--text-title); font-weight: bold;">(מכשיר זה)</small>
               </div>
-            </div>
-            <button class="disconnect-btn" onclick="disconnectDevice('${dev.endpoint}', ${isCurrent})">
-              נתק
-            </button>
-          `;
+              <button class="disconnect-btn" onclick="disconnectDevice('${dev.endpoint}', true)">נתק</button>
+            `;
+          } else {
+            devEl.innerHTML = `
+              <div>
+                <strong>📱 ${dev.name}</strong>
+                <div style="font-size: 0.8em; color: var(--text-muted);">
+                  ${dev.createdAt ? new Date(dev.createdAt).toLocaleDateString('he-IL') : 'פעיל'}
+                </div>
+              </div>
+              <button class="disconnect-btn" onclick="disconnectDevice('${dev.endpoint}', false)">נתק</button>
+            `;
+          }
+
           devicesList.appendChild(devEl);
         });
       } catch (err) {
@@ -355,11 +383,40 @@
       }
     }
 
+    async function saveCurrentDeviceName(endpoint) {
+      const input = document.getElementById('deviceNameInput');
+      const newName = input ? input.value.trim() : '';
+
+      if (!newName) {
+        alert('נא להזין שם מכשיר');
+        return;
+      }
+
+      try {
+        localStorage.setItem('custom_device_name', newName);
+
+        const res = await fetch(`${BACKEND_URL}/api/update-device-name`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint, deviceName: newName })
+        });
+
+        if (res.ok) {
+          alert('שם המכשיר עודכן בהצלחה!');
+          loadConnectedDevices();
+        } else {
+          throw new Error('Update failed');
+        }
+      } catch (err) {
+        console.error('שגיאה בשמירת שם המכשיר:', err);
+        alert('אירעה שגיאה בעת עדכון שם המכשיר');
+      }
+    }
+
     async function disconnectDevice(endpoint, isCurrentDevice) {
       if (!confirm('האם אתה בטוח שברצונך לנתק מכשיר זה מקבלת התראות?')) return;
 
       try {
-        // אם זה המכשיר הנוכחי - מבטלים את ה-Subscription בדפדפן
         if (isCurrentDevice) {
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.getSubscription();
@@ -371,7 +428,6 @@
           btn.style.background = 'var(--btn-bg)';
         }
 
-        // שליחת בקשת ניתוק לשרת
         await fetch(`${BACKEND_URL}/api/unsubscribe`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -386,7 +442,7 @@
       }
     }
 
-    // --- 3. מנגנון המרת טקסט לקישורים לחיצים ---
+    // --- 4. המרת כתובות לקישורים לחיצים ---
     function linkify(text) {
       if (!text) return '';
       const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -402,7 +458,7 @@
       });
     }
 
-    // --- 4. רנדור הודעות מ-IndexedDB ---
+    // --- 5. רנדור הודעות מ-IndexedDB ---
     function renderMessagesFromDB() {
       const request = indexedDB.open('PushMessagesDB', 1);
 
@@ -462,7 +518,7 @@
 
     setInterval(renderMessagesFromDB, 2000);
 
-    // --- 5. חיבור ל-Service Worker ורישום להתראות ---
+    // --- 6. הרשמה להתראות ---
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
       const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -509,9 +565,11 @@
           applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
         });
 
+        const deviceName = getDeviceDefaultName();
+
         const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
           method: 'POST',
-          body: JSON.stringify(subscription),
+          body: JSON.stringify({ subscription, deviceName }),
           headers: { 'Content-Type': 'application/json' }
         });
 
