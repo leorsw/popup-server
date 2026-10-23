@@ -6,10 +6,19 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
+// הגנה גלובלית מפני קריסות
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const corsOptions = {
   origin: ['https://leorsw.github.io', 'http://localhost:3000', 'http://127.0.0.1:5500'],
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'let-it-bleed-1969']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-custom-auth']
 };
 
 app.use(cors(corsOptions));
@@ -35,21 +44,26 @@ if (publicVapidKey && privateVapidKey) {
 app.get('/', (req, res) => res.send('AI Push Backend is running!'));
 
 app.post('/api/subscribe', async (req, res) => {
-  const bodyData = req.body || {};
-  const subscription = bodyData.subscription || bodyData;
-  const deviceName = bodyData.deviceName || 'מכשיר נייד';
+  try {
+    const bodyData = req.body || {};
+    const subscription = bodyData.subscription || bodyData;
+    const deviceName = bodyData.deviceName || 'מכשיר נייד';
 
-  if (!subscription || !subscription.endpoint) {
-    return res.status(400).json({ error: 'Invalid subscription' });
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: 'Invalid subscription' });
+    }
+
+    const { error } = await supabase.from('subscriptions').upsert(
+      { endpoint: subscription.endpoint, keys: subscription.keys, device_name: deviceName },
+      { onConflict: 'endpoint' }
+    );
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/subscribe:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const { error } = await supabase.from('subscriptions').upsert(
-    { endpoint: subscription.endpoint, keys: subscription.keys, device_name: deviceName },
-    { onConflict: 'endpoint' }
-  );
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json({ success: true });
 });
 
 app.get('/api/devices', async (req, res) => {
@@ -66,63 +80,82 @@ app.get('/api/devices', async (req, res) => {
 
     res.json({ devices });
   } catch (err) {
+    console.error('Error in /api/devices:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 app.post('/api/update-device-name', async (req, res) => {
-  const { endpoint, deviceName } = req.body;
-  if (!endpoint || !deviceName) return res.status(400).json({ error: 'Missing data' });
+  try {
+    const { endpoint, deviceName } = req.body;
+    if (!endpoint || !deviceName) return res.status(400).json({ error: 'Missing data' });
 
-  const { error } = await supabase.from('subscriptions').update({ device_name: deviceName }).eq('endpoint', endpoint);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    const { error } = await supabase.from('subscriptions').update({ device_name: deviceName }).eq('endpoint', endpoint);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/update-device-name:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.delete('/api/unsubscribe', async (req, res) => {
-  const { endpoint } = req.body;
-  if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
 
-  const { error } = await supabase.from('subscriptions').delete().eq('endpoint', endpoint);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    const { error } = await supabase.from('subscriptions').delete().eq('endpoint', endpoint);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/unsubscribe:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/api/ai-notify', async (req, res) => {
-  const apiKey = req.headers['let-it-bleed-1969'] || req.headers['x-api-key'];
-  const expectedApiKey = process.env.API_SECRET_KEY;
+  try {
+    const apiKey = req.headers['x-api-key'] || req.headers['x-custom-auth'];
+    const expectedApiKey = process.env.API_SECRET_KEY;
 
-  if (!expectedApiKey || apiKey !== expectedApiKey) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const { title, message, body, url } = req.body;
-  const { data: dbSubscriptions, error } = await supabase.from('subscriptions').select('*');
-
-  if (error || !dbSubscriptions || dbSubscriptions.length === 0) {
-    return res.status(400).json({ error: 'No subscribers found' });
-  }
-
-const payload = JSON.stringify({
-    title: title || 'עדכון מסוכן ה-AI',
-    body: contentText,
-    message: contentText,
-    url: url || 'https://leorsw.github.io/popup-server/', // <--- ודא שזה מצביע ל-GitHub Pages שלך
-    timestamp: Date.now()
-  });
-  
-  const notifications = dbSubscriptions.map(async (row) => {
-    try {
-      await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
-    } catch (err) {
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        await supabase.from('subscriptions').delete().eq('endpoint', row.endpoint);
-      }
+    if (!expectedApiKey || apiKey !== expectedApiKey) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
-  });
 
-  await Promise.all(notifications);
-  res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
+    const { title, message, body, url } = req.body;
+    const { data: dbSubscriptions, error } = await supabase.from('subscriptions').select('*');
+
+    if (error || !dbSubscriptions || dbSubscriptions.length === 0) {
+      return res.status(400).json({ error: 'No subscribers found' });
+    }
+
+    // הגדרה מסודרת של תוכן ההודעה למניעת קריסה
+    const contentText = body || message || '';
+    
+    const payload = JSON.stringify({
+      title: title || 'עדכון מסוכן ה-AI',
+      body: contentText,
+      message: contentText,
+      url: url || 'https://leorsw.github.io/popup-server/',
+      timestamp: Date.now()
+    });
+
+    const notifications = dbSubscriptions.map(async (row) => {
+      try {
+        await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('subscriptions').delete().eq('endpoint', row.endpoint);
+        }
+      }
+    });
+
+    await Promise.all(notifications);
+    res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
+  } catch (err) {
+    console.error('Error in /api/ai-notify:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
