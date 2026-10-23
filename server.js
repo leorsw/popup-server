@@ -103,15 +103,14 @@ app.post('/api/ai-notify', async (req, res) => {
     return res.status(400).json({ error: 'No subscribers found' });
   }
 
-  const contentText = body || message || '';
-  const payload = JSON.stringify({
+const payload = JSON.stringify({
     title: title || 'עדכון מסוכן ה-AI',
     body: contentText,
     message: contentText,
-    url: url || './',
+    url: url || 'https://leorsw.github.io/popup-server/', // <--- ודא שזה מצביע ל-GitHub Pages שלך
     timestamp: Date.now()
   });
-
+  
   const notifications = dbSubscriptions.map(async (row) => {
     try {
       await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
