@@ -3,7 +3,7 @@ self.addEventListener('push', function(event) {
   const title = data.title || 'התראה חדשה';
   const options = {
     body: data.body || data.message || '',
-    // כתובת היעד תיפתח ב-PWA שלך ב-GitHub Pages ולא בשרת
+    // כתובת היעד חייבת להיות כתובת ה-PWA שלך ב-GitHub Pages ולא ב-Render!
     data: { url: data.url || 'https://leorsw.github.io/popup-server/' },
     icon: './icon.png'
   };
@@ -12,12 +12,12 @@ self.addEventListener('push', function(event) {
     self.registration.showNotification(title, options)
   );
 
-  // שמירה מקומית במסד הנתונים IndexedDB עבור ממשק המשתמש
   event.waitUntil(saveMessageToDB(data));
 });
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
+  // כאן מוגדרת הכתובת שתפתח בלחיצה על הפוש
   const targetUrl = event.notification.data.url || 'https://leorsw.github.io/popup-server/';
 
   event.waitUntil(
@@ -34,6 +34,7 @@ self.addEventListener('notificationclick', function(event) {
     })
   );
 });
+
 
 // פונקציית עזר לשמירת הודעות ב-IndexedDB מתוך ה-Service Worker
 async function saveMessageToDB(data) {
