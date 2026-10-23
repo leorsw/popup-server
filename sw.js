@@ -1,68 +1,94 @@
-self.addEventListener('push', function(event) {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'התראה חדשה';
-  const options = {
-    body: data.body || data.message || '',
-    // כתובת היעד חייבת להיות כתובת ה-PWA שלך ב-GitHub Pages ולא ב-Render!
-    data: { url: data.url || 'https://leorsw.github.io/popup-server/' },
-    icon: './icon.png'
-  };
+const CACHE_NAME = 'ai-push-v2'; // שינוי הגרסה מאלץ רענון מטמון
 
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
-
-  event.waitUntil(saveMessageToDB(data));
+// התקנת ה-Service Worker ומחיקת מטמון ישן
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
 });
 
-self.addEventListener('notificationclick', function(event) {
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('מוחק מטמון ישן:', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// קבלת התראת Push מהשרת ושמירתה ב-IndexedDB
+self.addEventListener('push', (event) => {
+  let data = { title: 'התראה חדשה', body: 'קיבלת הודעה מהסוכן' };
+
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  // שמירה ב-IndexedDB
+  const promiseChain = new Promise((resolve, reject) => {
+    const request = indexedDB.open('PushMessagesDB', 1);
+
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('messages')) {
+        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = (e) => {
+      const db = e.target.result;
+      const tx = db.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      store.add({
+        title: data.title,
+        body: data.body,
+        timestamp: new Date().toISOString()
+      });
+
+      tx.oncomplete = () => {
+        resolve();
+      };
+    };
+
+    request.onerror = () => resolve(); // ממשיכים גם אם השמירה נכשלה
+  }).then(() => {
+    return self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: 'icon.png',
+      badge: 'icon.png'
+    });
+  });
+
+  event.waitUntil(promiseChain);
+});
+
+// לחיצה על ההתראה
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  // כאן מוגדרת הכתובת שתפתח בלחיצה על הפוש
-  const targetUrl = event.notification.data.url || 'https://leorsw.github.io/popup-server/';
+
+  // כתובת היעד המדויקת של האפליקציה ב-GitHub Pages
+  const targetUrl = self.location.origin + '/popup-server/';
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === targetUrl && 'focus' in client) {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // אם הלשונית כבר פתוחה - התמקד בה
+      for (const client of clientList) {
+        if (client.url.includes('/popup-server/') && 'focus' in client) {
           return client.focus();
         }
       }
+      // אם הלשונית אינה פתוחה - פתח את הכתובת הנכונה
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
     })
   );
 });
-
-
-// פונקציית עזר לשמירת הודעות ב-IndexedDB מתוך ה-Service Worker
-async function saveMessageToDB(data) {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('PushMessagesDB', 1);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('messages')) {
-        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      const db = event.target.result;
-      const tx = db.transaction('messages', 'readwrite');
-      const store = tx.objectStore('messages');
-      
-      store.add({
-        title: data.title || 'התראה',
-        body: data.body || data.message || '',
-        timestamp: data.timestamp || Date.now()
-      });
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    };
-
-    request.onerror = () => reject(request.error);
-  });
-}
