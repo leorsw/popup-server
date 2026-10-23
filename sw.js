@@ -1,67 +1,162 @@
-self.addEventListener('push', function(event) {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'התראה חדשה';
-  const options = {
-    body: data.body || data.message || '',
-    // כתובת היעד תיפתח ב-PWA שלך ב-GitHub Pages ולא בשרת
-    data: { url: data.url || 'https://leorsw.github.io/popup-server/' },
-    icon: './icon.png'
-  };
+const express = require('express');
+const webpush = require('web-push');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
 
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+const app = express();
 
-  // שמירה מקומית במסד הנתונים IndexedDB עבור ממשק המשתמש
-  event.waitUntil(saveMessageToDB(data));
+// הגנה גלובלית מפני קריסות
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
 });
 
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
-  const targetUrl = event.notification.data.url || 'https://leorsw.github.io/popup-server/';
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === targetUrl && 'focus' in client) {
-          return client.focus();
+const corsOptions = {
+  origin: ['https://leorsw.github.io', 'http://localhost:3000', 'http://127.0.0.1:5500'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-custom-auth']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+app.use(bodyParser.json());
+
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || '';
+const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseKey || 'placeholder-key');
+
+const publicVapidKey = process.env.VAPID_PUBLIC_KEY;
+const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
+
+if (publicVapidKey && privateVapidKey) {
+  try {
+    webpush.setVapidDetails('mailto:your-email@example.com', publicVapidKey, privateVapidKey);
+    console.log('VAPID configured successfully');
+  } catch (e) {
+    console.error('VAPID error:', e.message);
+  }
+}
+
+app.get('/', (req, res) => res.send('AI Push Backend is running!'));
+
+app.post('/api/subscribe', async (req, res) => {
+  try {
+    const bodyData = req.body || {};
+    const subscription = bodyData.subscription || bodyData;
+    const deviceName = bodyData.deviceName || 'מכשיר נייד';
+
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: 'Invalid subscription' });
+    }
+
+    const { error } = await supabase.from('subscriptions').upsert(
+      { endpoint: subscription.endpoint, keys: subscription.keys, device_name: deviceName },
+      { onConflict: 'endpoint' }
+    );
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/subscribe:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/devices', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('subscriptions').select('*');
+    if (error) return res.status(500).json({ error: error.message });
+
+    const devices = (data || []).map((sub, idx) => ({
+      id: sub.id || sub.endpoint,
+      endpoint: sub.endpoint,
+      name: sub.device_name || `מכשיר ${idx + 1}`,
+      createdAt: sub.created_at || new Date().toISOString()
+    }));
+
+    res.json({ devices });
+  } catch (err) {
+    console.error('Error in /api/devices:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/update-device-name', async (req, res) => {
+  try {
+    const { endpoint, deviceName } = req.body;
+    if (!endpoint || !deviceName) return res.status(400).json({ error: 'Missing data' });
+
+    const { error } = await supabase.from('subscriptions').update({ device_name: deviceName }).eq('endpoint', endpoint);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/update-device-name:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/unsubscribe', async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+
+    const { error } = await supabase.from('subscriptions').delete().eq('endpoint', endpoint);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in /api/unsubscribe:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/ai-notify', async (req, res) => {
+  try {
+    const apiKey = req.headers['x-api-key'] || req.headers['x-custom-auth'];
+    const expectedApiKey = process.env.API_SECRET_KEY;
+
+    if (!expectedApiKey || apiKey !== expectedApiKey) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { title, message, body, url } = req.body;
+    const { data: dbSubscriptions, error } = await supabase.from('subscriptions').select('*');
+
+    if (error || !dbSubscriptions || dbSubscriptions.length === 0) {
+      return res.status(400).json({ error: 'No subscribers found' });
+    }
+
+    // הגדרה מסודרת של תוכן ההודעה למניעת קריסה
+    const contentText = body || message || '';
+    
+    const payload = JSON.stringify({
+      title: title || 'עדכון מסוכן ה-AI',
+      body: contentText,
+      message: contentText,
+      url: url || 'https://leorsw.github.io/popup-server/',
+      timestamp: Date.now()
+    });
+
+    const notifications = dbSubscriptions.map(async (row) => {
+      try {
+        await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('subscriptions').delete().eq('endpoint', row.endpoint);
         }
       }
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    })
-  );
+    });
+
+    await Promise.all(notifications);
+    res.status(200).json({ success: true, sentTo: dbSubscriptions.length });
+  } catch (err) {
+    console.error('Error in /api/ai-notify:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// פונקציית עזר לשמירת הודעות ב-IndexedDB מתוך ה-Service Worker
-async function saveMessageToDB(data) {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('PushMessagesDB', 1);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('messages')) {
-        db.createObjectStore('messages', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      const db = event.target.result;
-      const tx = db.transaction('messages', 'readwrite');
-      const store = tx.objectStore('messages');
-      
-      store.add({
-        title: data.title || 'התראה',
-        body: data.body || data.message || '',
-        timestamp: data.timestamp || Date.now()
-      });
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    };
-
-    request.onerror = () => reject(request.error);
-  });
-}
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
