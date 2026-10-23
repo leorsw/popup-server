@@ -136,10 +136,10 @@ app.post('/api/ai-notify', async (req, res) => {
       title: title || 'עדכון מסוכן ה-AI',
       body: contentText,
       message: contentText,
-      url: url || 'https://leorsw.github.io/popup-server/',
+      url: url || 'https://leorsw.github.io/popup-server/', // לוודא שזה מעודכן לכתובת הנכונה
       timestamp: Date.now()
     });
-
+    
     const notifications = dbSubscriptions.map(async (row) => {
       try {
         await webpush.sendNotification({ endpoint: row.endpoint, keys: row.keys }, payload);
