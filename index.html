@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+
   <!-- תמיכה ב-PWA וב-iOS Safari -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -103,7 +104,7 @@
       cursor: pointer;
       font-size: 14px;
       font-weight: bold;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
       transition: all 0.2s ease-in-out;
     }
 
@@ -130,7 +131,7 @@
       border-radius: 8px;
       min-height: 100px;
       background: var(--card-bg);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       transition: background-color 0.3s, border-color 0.3s;
     }
 
@@ -173,7 +174,10 @@
     .modal-overlay {
       display: none;
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: rgba(0, 0, 0, 0.6);
       z-index: 1000;
       align-items: center;
@@ -189,7 +193,7 @@
       width: 100%;
       max-width: 450px;
       text-align: right;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
 
     .device-item {
@@ -221,6 +225,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <div class="container">
@@ -245,9 +250,10 @@
     <div class="modal-content">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h2 style="margin: 0; font-size: 1.3em;">📱 ניהול מכשירים מחוברים</h2>
-        <button id="closeModalBtn" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-main);">&times;</button>
+        <button id="closeModalBtn"
+          style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-main);">&times;</button>
       </div>
-      
+
       <div id="devicesList" style="max-height: 300px; overflow-y: auto;">
         <p style="text-align: center; color: var(--text-muted);">טוען מכשירים...</p>
       </div>
@@ -255,7 +261,7 @@
   </div>
 
   <script>
-    const BACKEND_URL = 'https://popup-server-cq3c.onrender.com';
+    const BACKEND_URL = 'https://popup-server.fly.dev';
     const PUBLIC_VAPID_KEY = 'BPA_3kPoq0s31n9DQwUGkxQsOi5OZu6G0_7NJF3jj_DlMa5JXTsRml9aOFG_i5H05vxVsr-gFv6xsp61y3NebdE';
 
     // --- 1. זיהוי שם מכשיר אוטומטי ---
@@ -421,7 +427,7 @@
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.getSubscription();
           if (sub) await sub.unsubscribe();
-          
+
           const btn = document.getElementById('subscribeBtn');
           btn.disabled = false;
           btn.textContent = 'הפעל התראות';
@@ -485,7 +491,7 @@
             messages.reverse().forEach(msg => {
               const item = document.createElement('div');
               item.className = 'message-item';
-              
+
               const titleEl = document.createElement('strong');
               titleEl.className = 'msg-title';
               titleEl.textContent = msg.title || 'התראה';
@@ -498,15 +504,15 @@
               timeEl.className = 'msg-time';
 
               // פורמט תאריך ושעה מלאים
-              timeEl.textContent = msg.timestamp 
+              timeEl.textContent = msg.timestamp
                 ? new Date(msg.timestamp).toLocaleString('he-IL', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                  })
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                })
                 : '';
 
               item.appendChild(titleEl);
@@ -600,4 +606,5 @@
     });
   </script>
 </body>
+
 </html>
