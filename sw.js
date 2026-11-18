@@ -63,30 +63,25 @@ self.addEventListener('push', (event) => {
     return self.registration.showNotification(data.title, {
       body: data.body,
       icon: 'icon.png',
-      badge: 'icon.png',
-      data: { url: data.url }
+      badge: 'icon.png'
     });
   });
 
   event.waitUntil(promiseChain);
 });
 
-// לחיצה על ההתראה — פותח את הכתובת שצורפה להתראה (למשל הצ'אט),
-// ואם אין כתובת — את דף הפופאפ כבעבר
+// לחיצה על ההתראה
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const notificationData = event.notification.data || {};
-  const targetUrl = notificationData.url || (self.location.origin + '/popup-server/');
+  // כתובת היעד המדויקת של האפליקציה ב-GitHub Pages
+  const targetUrl = self.location.origin + '/popup-server/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // אם הלשונית כבר פתוחה - התמקד בה
       for (const client of clientList) {
-        if (client.url === targetUrl && 'focus' in client) {
-          return client.focus();
-        }
-        if (targetUrl.includes('/popup-server/') && client.url.includes('/popup-server/') && 'focus' in client) {
+        if (client.url.includes('/popup-server/') && 'focus' in client) {
           return client.focus();
         }
       }
