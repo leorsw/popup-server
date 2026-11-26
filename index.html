@@ -235,6 +235,8 @@
     </div>
 
     <h1>מערכת התראות AI</h1>
+    <input type="password" id="subscribeCodeInput" placeholder="קוד סודי להרשמה" autocomplete="off"
+      style="display: block; margin: 0 auto 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 15px; width: 220px; text-align: center; background: var(--card-bg); color: var(--text-main);">
     <button id="subscribeBtn">הפעל התראות</button>
 
     <section id="messages-container" style="margin-top: 30px; text-align: right;">
@@ -333,6 +335,14 @@
       if (e.target === devicesModal) devicesModal.style.display = 'none';
     });
 
+    // כותרות ניהול: קוד ההרשמה השמור בדפדפן (מאומת בשרת מול מפתח API או הקוד)
+    function managementHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      const code = localStorage.getItem('subscribe_code');
+      if (code) headers['x-subscribe-code'] = code;
+      return headers;
+    }
+
     async function loadConnectedDevices() {
       devicesList.innerHTML = '<p style="text-align: center; color: var(--text-muted);">טוען מכשירים...</p>';
 
@@ -341,7 +351,22 @@
         const currentSub = await reg.pushManager.getSubscription();
         const currentEndpoint = currentSub ? currentSub.endpoint : null;
 
-        const res = await fetch(`${BACKEND_URL}/api/devices`);
+        let code = localStorage.getItem('subscribe_code');
+        if (!code) {
+          code = prompt('הזן את הקוד הסודי לניהול מכשירים:');
+          if (!code) {
+            devicesList.innerHTML = '<p style="text-align: center; color: var(--text-muted);">נדרש קוד סודי לצפייה במכשירים</p>';
+            return;
+          }
+          code = code.trim();
+          localStorage.setItem('subscribe_code', code);
+        }
+
+        const res = await fetch(`${BACKEND_URL}/api/devices`, { headers: { 'x-subscribe-code': code } });
+        if (res.status === 401) {
+          localStorage.removeItem('subscribe_code');
+          throw new Error('קוד שגוי');
+        }
         if (!res.ok) throw new Error('נכשל בטעינת מכשירים');
 
         const data = await res.json();
@@ -403,7 +428,7 @@
 
         const res = await fetch(`${BACKEND_URL}/api/update-device-name`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: managementHeaders(),
           body: JSON.stringify({ endpoint, deviceName: newName })
         });
 
@@ -434,11 +459,12 @@
           btn.style.background = 'var(--btn-bg)';
         }
 
-        await fetch(`${BACKEND_URL}/api/unsubscribe`, {
+        const unsubRes = await fetch(`${BACKEND_URL}/api/unsubscribe`, {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: managementHeaders(),
           body: JSON.stringify({ endpoint })
         });
+        if (!unsubRes.ok) throw new Error('Unsubscribe failed');
 
         alert('המכשיר נותק בהצלחה');
         loadConnectedDevices();
@@ -568,6 +594,15 @@
         btn.disabled = true;
         btn.textContent = 'מפעיל התראות...';
 
+        const codeInput = document.getElementById('subscribeCodeInput');
+        const code = (codeInput && codeInput.value.trim()) || localStorage.getItem('subscribe_code') || '';
+        if (!code) {
+          alert('יש להזין את הקוד הסודי');
+          btn.disabled = false;
+          btn.textContent = 'הפעל התראות';
+          return;
+        }
+
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
           alert('יש לאשר התראות בדפדפן');
@@ -586,14 +621,19 @@
 
         const res = await fetch(`${BACKEND_URL}/api/subscribe`, {
           method: 'POST',
-          body: JSON.stringify({ subscription, deviceName }),
+          body: JSON.stringify({ subscription, deviceName, code }),
           headers: { 'Content-Type': 'application/json' }
         });
 
         if (res.ok) {
+          localStorage.setItem('subscribe_code', code);
           btn.textContent = '✓ ההתראות פעילות';
           btn.style.background = '#38a169';
           alert('ההתראות הופעלו ונשמרו בשרת בהצלחה!');
+        } else if (res.status === 403) {
+          alert('הקוד שגוי — נסה שוב');
+          btn.disabled = false;
+          btn.textContent = 'הפעל התראות';
         } else {
           throw new Error('Server response not OK');
         }

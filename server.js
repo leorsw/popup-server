@@ -14,7 +14,7 @@ const corsOptions = {
     'http://127.0.0.1:5500'
   ],
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-custom-auth']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-custom-auth', 'x-subscribe-code']
 };
 
 app.use(cors(corsOptions));
@@ -49,9 +49,40 @@ if (publicVapidKey && privateVapidKey) {
 
 app.get('/', (req, res) => res.send('AI Push Backend + Supabase is running!'));
 
+// 3b. אימות לניהול: מפתח ה-API (לסקריפטים) או קוד ההרשמה (לדפדפן)
+const subscribeCode = process.env.SUBSCRIBE_CODE || '';
+function requireManagementAuth(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.headers['x-custom-auth'];
+  const expectedApiKey = process.env.API_SECRET_KEY;
+  if (expectedApiKey && apiKey === expectedApiKey) return next();
+  const code = req.headers['x-subscribe-code'] || (req.body && req.body.code);
+  if (subscribeCode && code === subscribeCode) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
+// 3c. Keepalive פתוח לשמירה על הפרויקט ער — קריאת DB קטנה, בלי מידע רגיש
+app.get('/api/keepalive', async (req, res) => {
+  try {
+    const { error } = await supabase.from('subscriptions').select('id').limit(1);
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
+
 // 4. שמירת / עדכון מנוי כולל שם מכשיר
 app.post('/api/subscribe', async (req, res) => {
   const bodyData = req.body || {};
+
+  // שער קוד סודי — נכשל סגור אם הקוד לא הוגדר בשרת
+  if (!subscribeCode) {
+    return res.status(503).json({ error: 'Subscribe code not configured' });
+  }
+  if (!bodyData.code || bodyData.code !== subscribeCode) {
+    return res.status(403).json({ error: 'Invalid subscribe code' });
+  }
+
   const subscription = bodyData.subscription || bodyData;
   const deviceName = bodyData.deviceName || 'מכשיר נייד';
 
@@ -79,7 +110,7 @@ app.post('/api/subscribe', async (req, res) => {
 });
 
 // 5. שליפת מכשירים מחוברים
-app.get('/api/devices', async (req, res) => {
+app.get('/api/devices', requireManagementAuth, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('subscriptions')
@@ -103,7 +134,7 @@ app.get('/api/devices', async (req, res) => {
 });
 
 // 6. עדכון שם מכשיר
-app.post('/api/update-device-name', async (req, res) => {
+app.post('/api/update-device-name', requireManagementAuth, async (req, res) => {
   const { endpoint, deviceName } = req.body;
 
   if (!endpoint || !deviceName) {
@@ -123,7 +154,7 @@ app.post('/api/update-device-name', async (req, res) => {
 });
 
 // 7. ניתוק מכשיר
-app.delete('/api/unsubscribe', async (req, res) => {
+app.delete('/api/unsubscribe', requireManagementAuth, async (req, res) => {
   const { endpoint } = req.body;
 
   if (!endpoint) {
